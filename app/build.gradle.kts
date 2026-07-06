@@ -24,7 +24,11 @@ android {
       abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
     }
     versionName = Configurations.versionName
-    buildConfigField("String", "GATEWAY_KEY", "\"${rootProject.file("secrets.properties").let { f -> if (f.exists()) Properties().apply { f.inputStream().use { load(it) } }.getProperty("GATEWAY_KEY", "") else "" }}\"")
+    val gatewayKey = (project.findProperty("GATEWAY_KEY") as? String)
+      ?: rootProject.file("secrets.properties").let { f ->
+        if (f.exists()) Properties().apply { f.inputStream().use { load(it) } }.getProperty("GATEWAY_KEY", "") else ""
+      }
+    buildConfigField("String", "GATEWAY_KEY", "\"$gatewayKey\"")
   }
 
   buildFeatures { buildConfig = true }
