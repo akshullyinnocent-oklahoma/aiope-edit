@@ -102,10 +102,14 @@ object ProotBootstrap {
         val pdArch = when {
           "aarch64" in arch || "arm64" in arch -> "aarch64"
           "x86_64" in arch -> "x86_64"
+          "arm" in arch || "v7" in arch -> "armv7"
           else -> "aarch64"
         }
-        val url = "https://github.com/xnet-admin-1/box/releases/download/rootfs-alpine-3.21.3/box-alpine-3.21-$pdArch.tar.xz"
-        val tarball = File(envDir, "rootfs.tar.xz")
+        val url = when (pdArch) {
+          "armv7" -> "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/armv7/alpine-minirootfs-3.21.3-armv7.tar.gz"
+          else -> "https://github.com/xnet-admin-1/box/releases/download/rootfs-alpine-3.21.3/box-alpine-3.21-$pdArch.tar.xz"
+        }
+        val tarball = File(envDir, if (url.endsWith(".gz")) "rootfs.tar.gz" else "rootfs.tar.xz")
 
         l("Downloading Alpine 3.21 rootfs ($pdArch)...")
         download(url, tarball, l)

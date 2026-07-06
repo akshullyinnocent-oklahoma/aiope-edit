@@ -19,6 +19,10 @@ android {
     minSdk = Configurations.minSdk
     targetSdk = Configurations.targetSdk
     versionCode = Configurations.versionCode
+
+    ndk {
+      abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+    }
     versionName = Configurations.versionName
     buildConfigField("String", "GATEWAY_KEY", "\"${rootProject.file("secrets.properties").let { f -> if (f.exists()) Properties().apply { f.inputStream().use { load(it) } }.getProperty("GATEWAY_KEY", "") else "" }}\"")
   }
