@@ -18,10 +18,10 @@ import java.util.ServiceLoader
  * Supports built-in plugins, APK plugins, and dynamic loading.
  */
 class PluginManager(private val ctx: Context, private val dao: ChatDao) {
-  private val TAG = "PluginManager"
+  private val tag = "PluginManager"
   private val pluginsDir = File(ctx.filesDir, "plugins")
   private val loadedPlugins = mutableMapOf<String, AiopePlugin>()
-  
+
   data class PluginInfo(
     val id: String,
     val name: String,
@@ -50,7 +50,7 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
       put("tools", JSONArray(tools.map { it.toJson() }))
       put("hooks", JSONArray(hooks))
     }
-    
+
     companion object {
       fun fromJson(j: JSONObject): PluginInfo = PluginInfo(
         id = j.getString("id"),
@@ -68,7 +68,7 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
       )
     }
   }
-  
+
   data class PluginToolDef(
     val name: String,
     val description: String,
@@ -79,7 +79,7 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
       put("description", description)
       put("parameters", JSONObject(parameters))
     }
-    
+
     companion object {
       fun fromJson(j: JSONObject): PluginToolDef = PluginToolDef(
         name = j.getString("name"),
@@ -122,7 +122,7 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
       hooks = listOf("on_tool_call"),
     )
     savePluginInfo(githubPlugin)
-    
+
     // Hermes-AI plugin
     val hermesPlugin = PluginInfo(
       id = "hermes-ai",
@@ -141,17 +141,19 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
   }
 
   /** Get all registered plugins */
-  fun getPlugins(): List<PluginInfo> {
-    return try {
-      val json = dao.getSetting("plugins_registry") ?: "[]"
-      val arr = JSONArray(json)
-      (0 until arr.length()).mapNotNull { 
-        try { PluginInfo.fromJson(arr.getJSONObject(it)) } catch (_: Exception) { null }
+  fun getPlugins(): List<PluginInfo> = try {
+    val json = dao.getSetting("plugins_registry") ?: "[]"
+    val arr = JSONArray(json)
+    (0 until arr.length()).mapNotNull {
+      try {
+        PluginInfo.fromJson(arr.getJSONObject(it))
+      } catch (_: Exception) {
+        null
       }
-    } catch (e: Exception) {
-      Log.e(TAG, "Failed to load plugins", e)
-      emptyList()
     }
+  } catch (e: Exception) {
+    Log.e(TAG, "Failed to load plugins", e)
+    emptyList()
   }
 
   /** Get enabled plugins */
@@ -162,10 +164,10 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
     val plugins = getPlugins().toMutableList()
     val idx = plugins.indexOfFirst { it.id == info.id }
     if (idx >= 0) plugins[idx] = info else plugins.add(info)
-    
+
     val arr = JSONArray()
     plugins.forEach { arr.put(it.toJson()) }
-    
+
     kotlinx.coroutines.runBlocking(Dispatchers.IO) {
       dao.upsertSetting(SettingsKvEntity("plugins_registry", arr.toString()))
     }
@@ -192,23 +194,23 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
       val url = "https://clawhub.aiope.org/api/plugins/$pluginId"
       val client = com.aiope2.feature.chat.engine.SafeOkHttp.builder().build()
       val request = okhttp3.Request.Builder().url(url).build()
-      
+
       client.newCall(request).execute().use { response ->
         if (!response.isSuccessful) return@withContext "Failed to fetch plugin: HTTP ${response.code}"
-        
+
         val body = response.body?.string() ?: return@withContext "Empty response"
         val json = JSONObject(body)
-        
+
         // Download plugin file
         val downloadUrl = json.getString("downloadUrl")
         val pluginFile = File(pluginsDir, "$pluginId.aiope-plugin")
-        
+
         URL(downloadUrl).openStream().use { input ->
           pluginFile.outputStream().use { output ->
             input.copyTo(output)
           }
         }
-        
+
         // Register plugin
         val info = PluginInfo(
           id = pluginId,
@@ -231,12 +233,12 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
   fun uninstallPlugin(id: String) {
     val plugins = getPlugins().toMutableList()
     val plugin = plugins.find { it.id == id } ?: return
-    
+
     // Delete plugin files
     if (plugin.entryPoint.isNotBlank()) {
       File(plugin.entryPoint).delete()
     }
-    
+
     plugins.removeAll { it.id == id }
     val arr = JSONArray()
     plugins.forEach { arr.put(it.toJson()) }
@@ -246,22 +248,23 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
   }
 
   /** Build tool definitions for all enabled plugins */
-  fun buildToolDefs(): List<com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef> {
-    return getEnabledPlugins().flatMap { plugin ->
-      plugin.tools.map { tool ->
-        com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef(
-          name = "${plugin.id}_${tool.name}",
-          description = "[${plugin.name}] ${tool.description}",
-          parameters = JSONObject().apply {
-            put("type", "object")
-            put("properties", JSONObject().apply {
+  fun buildToolDefs(): List<com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef> = getEnabledPlugins().flatMap { plugin ->
+    plugin.tools.map { tool ->
+      com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef(
+        name = "${plugin.id}_${tool.name}",
+        description = "[${plugin.name}] ${tool.description}",
+        parameters = JSONObject().apply {
+          put("type", "object")
+          put(
+            "properties",
+            JSONObject().apply {
               tool.parameters.forEach { (name, type) ->
                 put(name, JSONObject().put("type", type))
               }
-            })
-          },
-        )
-      }
+            },
+          )
+        },
+      )
     }
   }
 
@@ -269,7 +272,7 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
   suspend fun execute(pluginId: String, toolName: String, args: Map<String, Any?>): String {
     val plugin = getPlugins().find { it.id == pluginId } ?: return "Plugin not found: $pluginId"
     if (!plugin.enabled) return "Plugin '$pluginId' is disabled."
-    
+
     return when (pluginId) {
       "github" -> executeGitHubTool(toolName, args)
       "hermes-ai" -> executeHermesTool(toolName, args)
@@ -285,32 +288,38 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
           // Use GitHub MCP-style via okhttp
           "GitHub repo search for: $query (integrate with github MCP)"
         }
+
         "github_search_code" -> {
           val query = args["query"]?.toString() ?: return "query required"
           "GitHub code search for: $query"
         }
+
         "github_get_repo" -> {
           val owner = args["owner"]?.toString() ?: return "owner required"
           val repo = args["repo"]?.toString() ?: return "repo required"
           "Getting repo: $owner/$repo"
         }
+
         "github_list_issues" -> {
           val owner = args["owner"]?.toString() ?: return "owner required"
           val repo = args["repo"]?.toString() ?: return "repo required"
           "Listing issues for $owner/$repo"
         }
+
         "github_create_issue" -> {
           val owner = args["owner"]?.toString() ?: return "owner required"
           val repo = args["repo"]?.toString() ?: return "repo required"
           val title = args["title"]?.toString() ?: return "title required"
           "Creating issue in $owner/$repo: $title"
         }
+
         "github_get_file" -> {
           val owner = args["owner"]?.toString() ?: return "owner required"
           val repo = args["repo"]?.toString() ?: return "repo required"
           val path = args["path"]?.toString() ?: return "path required"
           "Getting file: $owner/$repo/$path"
         }
+
         else -> "Unknown GitHub tool: $toolName"
       }
     } catch (e: Exception) {
@@ -324,7 +333,9 @@ class PluginManager(private val ctx: Context, private val dao: ChatDao) {
         val prompt = args["prompt"]?.toString() ?: return "prompt required"
         "Hermes query: $prompt"
       }
+
       "hermes_status" -> "Hermes-AI: available"
+
       else -> "Unknown Hermes tool: $toolName"
     }
   }

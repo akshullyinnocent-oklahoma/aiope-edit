@@ -12,61 +12,55 @@ import kotlinx.coroutines.runBlocking
  * memory editor, and cross-session memory recall.
  */
 class MemorySettingsManager(private val ctx: Context, private val dao: ChatDao) {
-  
+
   /** Check if global memory is enabled */
-  fun isGlobalMemoryEnabled(): Boolean {
-    return runBlocking(Dispatchers.IO) {
-      dao.getSetting("memory_global_enabled")?.toBooleanStrictOrNull() ?: false
-    }
+  fun isGlobalMemoryEnabled(): Boolean = runBlocking(Dispatchers.IO) {
+    dao.getSetting("memory_global_enabled")?.toBooleanStrictOrNull() ?: false
   }
-  
+
   /** Toggle global memory (recall across all sessions) */
   fun setGlobalMemoryEnabled(enabled: Boolean) {
     runBlocking(Dispatchers.IO) {
       dao.upsertSetting(SettingsKvEntity("memory_global_enabled", enabled.toString()))
     }
   }
-  
+
   /** Get all memories for the editor */
-  fun getAllMemories(): List<MemoryEntity> {
-    return runBlocking(Dispatchers.IO) {
-      dao.getAllMemories()
-    }
+  fun getAllMemories(): List<MemoryEntity> = runBlocking(Dispatchers.IO) {
+    dao.getAllMemories()
   }
-  
+
   /** Search memories */
-  fun searchMemories(query: String): List<MemoryEntity> {
-    return runBlocking(Dispatchers.IO) {
-      if (query.isBlank()) dao.getAllMemories() else dao.searchMemories(query)
-    }
+  fun searchMemories(query: String): List<MemoryEntity> = runBlocking(Dispatchers.IO) {
+    if (query.isBlank()) dao.getAllMemories() else dao.searchMemories(query)
   }
-  
+
   /** Update a memory */
   fun updateMemory(memory: MemoryEntity) {
     runBlocking(Dispatchers.IO) {
       dao.upsertMemory(memory)
     }
   }
-  
+
   /** Delete a memory by key */
   fun deleteMemory(key: String) {
     runBlocking(Dispatchers.IO) {
       dao.deleteMemory(key)
     }
   }
-  
+
   /** Get memories for system prompt injection */
   fun getMemoriesForPrompt(query: String = ""): String {
     if (!isGlobalMemoryEnabled() && query.isBlank()) return ""
-    
+
     val memories = if (query.isNotBlank()) {
       searchMemories(query)
     } else {
       getAllMemories()
     }
-    
+
     if (memories.isEmpty()) return ""
-    
+
     return buildString {
       appendLine("## User Memory")
       memories.take(20).forEach { m ->
@@ -74,7 +68,7 @@ class MemorySettingsManager(private val ctx: Context, private val dao: ChatDao) 
       }
     }
   }
-  
+
   /** Export memories to markdown */
   fun exportToMarkdown(): String {
     val memories = getAllMemories()
@@ -92,7 +86,7 @@ class MemorySettingsManager(private val ctx: Context, private val dao: ChatDao) 
       }
     }
   }
-  
+
   /** Import memories from markdown */
   fun importFromMarkdown(markdown: String): Int {
     // Parse markdown and create memories
@@ -111,7 +105,7 @@ class MemorySettingsManager(private val ctx: Context, private val dao: ChatDao) 
     }
     return count
   }
-  
+
   /** Get memory statistics */
   fun getMemoryStats(): MemoryStats {
     val memories = getAllMemories()
@@ -122,7 +116,7 @@ class MemorySettingsManager(private val ctx: Context, private val dao: ChatDao) 
       newestMemory = memories.maxByOrNull { it.updatedAt },
     )
   }
-  
+
   data class MemoryStats(
     val totalCount: Int,
     val byCategory: Map<String, Int>,

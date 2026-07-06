@@ -13,10 +13,8 @@ import kotlinx.coroutines.runBlocking
 class SystemPromptEditor(private val ctx: Context, private val dao: ChatDao) {
 
   /** Get the editable base prompt */
-  fun getBasePrompt(): String {
-    return runBlocking(Dispatchers.IO) {
-      dao.getSetting("agent_x_base_prompt") ?: DEFAULT_BASE_PROMPT
-    }
+  fun getBasePrompt(): String = runBlocking(Dispatchers.IO) {
+    dao.getSetting("agent_x_base_prompt") ?: DEFAULT_BASE_PROMPT
   }
 
   /** Save the base prompt */
@@ -32,10 +30,8 @@ class SystemPromptEditor(private val ctx: Context, private val dao: ChatDao) {
   }
 
   /** Get the persona prompt */
-  fun getPersonaPrompt(): String {
-    return runBlocking(Dispatchers.IO) {
-      dao.getSetting("agent_persona") ?: DEFAULT_PERSONA
-    }
+  fun getPersonaPrompt(): String = runBlocking(Dispatchers.IO) {
+    dao.getSetting("agent_persona") ?: DEFAULT_PERSONA
   }
 
   /** Save persona */
@@ -46,10 +42,8 @@ class SystemPromptEditor(private val ctx: Context, private val dao: ChatDao) {
   }
 
   /** Get continuation prompt for auto-run */
-  fun getContinuationPrompt(): String {
-    return runBlocking(Dispatchers.IO) {
-      dao.getSetting("agent_auto_run_prompt") ?: "continue"
-    }
+  fun getContinuationPrompt(): String = runBlocking(Dispatchers.IO) {
+    dao.getSetting("agent_auto_run_prompt") ?: "continue"
   }
 
   /** Build the complete system prompt with all dynamic parts */
@@ -65,17 +59,17 @@ class SystemPromptEditor(private val ctx: Context, private val dao: ChatDao) {
     customToolContext: String = "",
   ): String {
     val parts = mutableListOf<String>()
-    
+
     // Base prompt
     parts.add(getBasePrompt())
-    
+
     // Persona
     val persona = getPersonaPrompt()
     if (persona.isNotBlank()) parts.add(persona)
-    
+
     // Mode-specific prefix
     if (modePrefix.isNotBlank()) parts.add(modePrefix)
-    
+
     // Dynamic contexts
     if (appContext.isNotBlank()) parts.add(appContext)
     if (remoteContext.isNotBlank()) parts.add(remoteContext)
@@ -85,7 +79,7 @@ class SystemPromptEditor(private val ctx: Context, private val dao: ChatDao) {
     if (healthContext.isNotBlank()) parts.add(healthContext)
     if (prootContext.isNotBlank()) parts.add(prootContext)
     if (customToolContext.isNotBlank()) parts.add(customToolContext)
-    
+
     return parts.joinToString("\n\n")
   }
 

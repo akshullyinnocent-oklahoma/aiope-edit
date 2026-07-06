@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * and recovers from errors across the entire app.
  */
 class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
-  private val TAG = "SelfHealing"
+  private val tag = "SelfHealing"
   private val errorHistory = ConcurrentHashMap<String, MutableList<ErrorRecord>>()
   private val recoveryAttempts = AtomicInteger(0)
   private val maxRecoveryAttempts = 5
@@ -48,29 +48,29 @@ class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
   )
 
   enum class HealthLevel {
-    HEALTHY,    // All systems nominal
-    DEGRADED,   // Some issues but functioning
-    CRITICAL,   // Major issues requiring attention
+    HEALTHY, // All systems nominal
+    DEGRADED, // Some issues but functioning
+    CRITICAL, // Major issues requiring attention
     RECOVERING, // Currently attempting recovery
   }
 
   /** Report an error to the healing engine */
   fun reportError(component: String, error: Throwable, context: String = "") {
     Log.e(TAG, "Error in $component: ${error.message}", error)
-    
+
     val record = ErrorRecord(
       component = component,
       error = "${error.javaClass.simpleName}: ${error.message}",
       stackTrace = error.stackTraceToString(),
     )
-    
+
     errorHistory.getOrPut(component) { mutableListOf() }.add(record)
-    
+
     // Trim history
     if (errorHistory[component]!!.size > 50) {
       errorHistory[component] = errorHistory[component]!!.takeLast(50).toMutableList()
     }
-    
+
     // Attempt auto-recovery
     scope.launch {
       attemptRecovery(component, error, context)
@@ -81,7 +81,7 @@ class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
   fun reportIssue(component: String, message: String) {
     Log.w(TAG, "Issue in $component: $message")
     errorHistory.getOrPut(component) { mutableListOf() }.add(
-      ErrorRecord(component = component, error = message)
+      ErrorRecord(component = component, error = message),
     )
   }
 
@@ -91,57 +91,57 @@ class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
       Log.w(TAG, "Max recovery attempts reached for $component")
       return
     }
-    
+
     recoveryAttempts.incrementAndGet()
-    
+
     try {
       val action = when {
         // Network-related errors
         error.message?.contains("network", ignoreCase = true) == true ||
-        error.message?.contains("connection", ignoreCase = true) == true ||
-        error.message?.contains("timeout", ignoreCase = true) == true -> {
+          error.message?.contains("connection", ignoreCase = true) == true ||
+          error.message?.contains("timeout", ignoreCase = true) == true -> {
           delay(5000) // Wait and retry
           "Delayed retry after network error"
         }
-        
+
         // Permission errors
         error is SecurityException ||
-        error.message?.contains("permission", ignoreCase = true) == true -> {
+          error.message?.contains("permission", ignoreCase = true) == true -> {
           "Permission error - user intervention required"
         }
-        
+
         // Memory/OOM errors
         error is OutOfMemoryError ||
-        error.message?.contains("memory", ignoreCase = true) == true -> {
+          error.message?.contains("memory", ignoreCase = true) == true -> {
           System.gc()
           "Triggered garbage collection"
         }
-        
+
         // Database errors
         error.message?.contains("database", ignoreCase = true) == true ||
-        error.message?.contains("sqlite", ignoreCase = true) == true ||
-        error.message?.contains("room", ignoreCase = true) == true -> {
+          error.message?.contains("sqlite", ignoreCase = true) == true ||
+          error.message?.contains("room", ignoreCase = true) == true -> {
           "Database error - may need migration or cleanup"
         }
-        
+
         // Tool execution errors
         component == "ToolExecutor" -> {
           "Tool execution failed - will retry with fallback"
         }
-        
+
         // Streaming errors
         component == "StreamingOrchestrator" -> {
           delay(2000)
           "Stream error - reconnection scheduled"
         }
-        
+
         else -> {
           "Generic recovery - error logged for analysis"
         }
       }
-      
+
       Log.i(TAG, "Recovery action for $component: $action")
-      
+
       // Update record
       errorHistory[component]?.lastOrNull()?.let { last ->
         val idx = errorHistory[component]!!.indexOf(last)
@@ -152,7 +152,6 @@ class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
           )
         }
       }
-      
     } catch (e: Exception) {
       Log.e(TAG, "Recovery itself failed: ${e.message}")
     } finally {
@@ -164,24 +163,24 @@ class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
   fun getHealthStatus(): HealthStatus {
     val components = mutableMapOf<String, HealthLevel>()
     val allErrors = mutableListOf<ErrorRecord>()
-    
+
     errorHistory.forEach { (component, errors) ->
       allErrors.addAll(errors)
       val recentErrors = errors.filter { System.currentTimeMillis() - it.timestamp < 300000 } // 5 min
-      
+
       components[component] = when {
         recentErrors.isEmpty() -> HealthLevel.HEALTHY
         recentErrors.size < 3 -> HealthLevel.DEGRADED
         else -> HealthLevel.CRITICAL
       }
     }
-    
+
     val overall = when {
       components.values.any { it == HealthLevel.CRITICAL } -> HealthLevel.CRITICAL
       components.values.any { it == HealthLevel.DEGRADED } -> HealthLevel.DEGRADED
       else -> HealthLevel.HEALTHY
     }
-    
+
     return HealthStatus(
       overall = overall,
       components = components,
@@ -198,7 +197,7 @@ class SelfHealingEngine(private val ctx: Context, private val dao: ChatDao) {
         appendLine("No errors recorded. System healthy.")
         return@buildString
       }
-      
+
       errorHistory.forEach { (component, errors) ->
         val recent = errors.filter { System.currentTimeMillis() - it.timestamp < 3600000 }
         val recovered = errors.count { it.recovered }

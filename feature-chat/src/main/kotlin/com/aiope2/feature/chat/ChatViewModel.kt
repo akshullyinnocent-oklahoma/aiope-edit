@@ -11,12 +11,12 @@ import com.aiope2.core.network.ProviderTemplates
 import com.aiope2.feature.chat.db.ChatDao
 import com.aiope2.feature.chat.db.ConversationEntity
 import com.aiope2.feature.chat.db.MessageEntity
-import com.aiope2.feature.chat.engine.StreamingOrchestrator
+import com.aiope2.feature.chat.engine.AudioConfig
 import com.aiope2.feature.chat.engine.RealtimeAudioManager
 import com.aiope2.feature.chat.engine.RealtimeStreaming
 import com.aiope2.feature.chat.engine.SafeOkHttp
-import com.aiope2.feature.chat.engine.AudioConfig
 import com.aiope2.feature.chat.engine.StreamEvent
+import com.aiope2.feature.chat.engine.StreamingOrchestrator
 import com.aiope2.feature.chat.engine.TokenCounter
 import com.aiope2.feature.chat.engine.ToolExecutor
 import com.aiope2.feature.chat.settings.McpManager
@@ -43,8 +43,7 @@ class ChatViewModel @Inject constructor(
 
   private val connectivityManager = application.getSystemService(android.net.ConnectivityManager::class.java)
 
-  private fun isOnline(): Boolean =
-    connectivityManager?.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) } ?: false
+  private fun isOnline(): Boolean = connectivityManager?.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) } ?: false
 
   private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
   val messages = _messages.asStateFlow()
@@ -118,9 +117,11 @@ class ChatViewModel @Inject constructor(
 
     realtimeStreamingJob = viewModelScope.launch(Dispatchers.IO) {
       try {
-        val sysPrompt = (buildSystemMessages(ModelConfig(modelId = resolvedModelId))
-            .firstOrNull { it.first == "system" }?.second ?: "") +
-            "\n\nYou are in a live voice session with full tool access. Execute all tools directly and autonomously — never tell the user to do something manually. You can browse, click, fill forms, run commands, send messages, and perform any action yourself."
+        val sysPrompt = (
+          buildSystemMessages(ModelConfig(modelId = resolvedModelId))
+            .firstOrNull { it.first == "system" }?.second ?: ""
+          ) +
+          "\n\nYou are in a live voice session with full tool access. Execute all tools directly and autonomously — never tell the user to do something manually. You can browse, click, fill forms, run commands, send messages, and perform any action yourself."
         val realtimeStream = RealtimeStreaming(
           okHttp = okHttp,
           modelDef = modelDef,
@@ -128,7 +129,7 @@ class ChatViewModel @Inject constructor(
           provider = profile,
           audioManager = realtimeAudioManager!!,
           systemPrompt = sysPrompt,
-          voiceName = com.aiope2.feature.chat.settings.getVoiceName(getApplication())
+          voiceName = com.aiope2.feature.chat.settings.getVoiceName(getApplication()),
         )
         this@ChatViewModel.realtimeStream = realtimeStream
 
@@ -139,10 +140,12 @@ class ChatViewModel @Inject constructor(
               // Text parts from model (rare with audio-only, but handle)
               currentTurnText.append(event.text)
             }
+
             is StreamEvent.AudioChunk -> {
               realtimeAudioManager?.playAudio(event.pcmData)
               viewModelScope.launch(Dispatchers.Main) { _isVoiceSpeaking.value = true }
             }
+
             is StreamEvent.TurnComplete -> {
               // Persist the assistant message
               if (voiceTurnId.isNotBlank()) {
@@ -161,7 +164,9 @@ class ChatViewModel @Inject constructor(
                 _isVoiceListening.value = true
               }
             }
+
             is StreamEvent.Connected -> {}
+
             is StreamEvent.InputTranscription -> {
               val msgId = java.util.UUID.randomUUID().toString()
               viewModelScope.launch(Dispatchers.Main) {
@@ -172,6 +177,7 @@ class ChatViewModel @Inject constructor(
                 chatDao.insertMessage(MessageEntity(id = msgId, conversationId = conversationId, role = Role.USER.value, content = event.text))
               }
             }
+
             is StreamEvent.OutputTranscription -> {
               viewModelScope.launch(Dispatchers.Main) {
                 val msgs = _messages.value.toMutableList()
@@ -185,6 +191,7 @@ class ChatViewModel @Inject constructor(
                 _messages.value = msgs
               }
             }
+
             is StreamEvent.Error -> {
               if (!event.message.isNullOrBlank()) {
                 viewModelScope.launch(Dispatchers.Main) {
@@ -193,15 +200,19 @@ class ChatViewModel @Inject constructor(
               }
               stopRealtimeVoice()
             }
+
             is StreamEvent.ToolCallEvent -> {
               val responses = event.functionCalls.map { fc ->
                 val result = try {
                   toolExecutor.execute(fc.name, fc.args)
-                } catch (e: Exception) { "Error: ${e.message}" }
+                } catch (e: Exception) {
+                  "Error: ${e.message}"
+                }
                 fc.id to result
               }
               realtimeStream.sendToolResponse(responses)
             }
+
             else -> {}
           }
         }
@@ -227,7 +238,9 @@ class ChatViewModel @Inject constructor(
     realtimeStreamingJob?.cancel()
     realtimeStreamingJob = null
     realtimeStream = null
-    try { realtimeAudioManager?.stop() } catch (_: Exception) {}
+    try {
+      realtimeAudioManager?.stop()
+    } catch (_: Exception) {}
     realtimeAudioManager = null
     try {
       val am = getApplication<android.app.Application>().getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
@@ -250,7 +263,6 @@ class ChatViewModel @Inject constructor(
     return ModelDef(id = modelId, supportsAudio = audio, useStreaming = audio)
   }
 
-
   private val _terminalVisible = MutableStateFlow(false)
   val terminalVisible = _terminalVisible.asStateFlow()
   private val _browserVisible = MutableStateFlow(false)
@@ -268,7 +280,9 @@ class ChatViewModel @Inject constructor(
 
   private var conversationId: String
     get() = savedState["conversationId"] ?: UUID.randomUUID().toString().also { savedState["conversationId"] = it }
-    set(value) { savedState["conversationId"] = value }
+    set(value) {
+      savedState["conversationId"] = value
+    }
 
   val _modelLabel = MutableStateFlow("")
   val modelLabel: String get() = _modelLabel.value
@@ -491,7 +505,9 @@ class ChatViewModel @Inject constructor(
           chatDao.updateConversation(conversationId, title)
           refreshConversations()
         }
-      } catch (e: Exception) { android.util.Log.w("ChatVM", "title gen failed: ${e.message}") }
+      } catch (e: Exception) {
+        android.util.Log.w("ChatVM", "title gen failed: ${e.message}")
+      }
     }
   }
 
@@ -520,7 +536,8 @@ class ChatViewModel @Inject constructor(
       val savedPaths = com.aiope2.feature.chat.engine.ImageProcessor.saveImagesToDisk(
         getApplication<android.app.Application>().filesDir,
         getApplication<android.app.Application>().contentResolver,
-        userMsg.id, imageUris,
+        userMsg.id,
+        imageUris,
       )
       chatDao.insertMessage(
         MessageEntity(
@@ -864,8 +881,7 @@ class ChatViewModel @Inject constructor(
     }
   }
 
-  /** Send to LLM without adding a new user message (used by retry) */
-  /** Shared streaming collection logic used by send() and resend(). Returns final content string. */
+  // Shared streaming collection logic used by send() and resend(). Returns final content string.
   private suspend fun collectStream(
     orchestrator: StreamingOrchestrator,
     messages: List<Pair<String, String>>,
@@ -883,18 +899,25 @@ class ChatViewModel @Inject constructor(
 
     orchestrator.stream(messages, imageBase64s).collect { chunk ->
       chunk.reasoning?.let { r ->
-        if (!isReasoning) { isReasoning = true; currentReasoning.clear() }
+        if (!isReasoning) {
+          isReasoning = true
+          currentReasoning.clear()
+        }
         currentReasoning.append(r)
       }
       if (chunk.content.isNotEmpty()) {
         if (isReasoning && currentReasoning.isNotEmpty()) {
-          reasoningBlocks.add(currentReasoning.toString()); currentReasoning.clear(); isReasoning = false
+          reasoningBlocks.add(currentReasoning.toString())
+          currentReasoning.clear()
+          isReasoning = false
         }
         sb.append(chunk.content)
       }
       chunk.toolCalls?.let { calls ->
         if (isReasoning && currentReasoning.isNotEmpty()) {
-          reasoningBlocks.add(currentReasoning.toString()); currentReasoning.clear(); isReasoning = false
+          reasoningBlocks.add(currentReasoning.toString())
+          currentReasoning.clear()
+          isReasoning = false
         }
         for (c in calls) toolCallsList.add("${c.name}(${c.arguments.entries.joinToString(", ") { "${it.key}=${it.value}" }})")
       }
@@ -906,7 +929,8 @@ class ChatViewModel @Inject constructor(
       }
       chunk.error?.let { sb.append("\nError: $it") }
       if (chunk.isDone && isReasoning && currentReasoning.isNotEmpty()) {
-        reasoningBlocks.add(currentReasoning.toString()); isReasoning = false
+        reasoningBlocks.add(currentReasoning.toString())
+        isReasoning = false
       }
       val allReasoning = if (isReasoning && currentReasoning.isNotEmpty()) reasoningBlocks + currentReasoning.toString() else reasoningBlocks.toList()
       val currentLen = sb.length
@@ -917,8 +941,12 @@ class ChatViewModel @Inject constructor(
         withContext(Dispatchers.Main) {
           _messages.value = _messages.value.toMutableList().also {
             it[it.lastIndex] = it.last().copy(
-              content = sb.toString(), reasoning = allReasoning, isReasoningDone = !isReasoning,
-              toolCalls = toolCallsList.toList(), toolResults = toolResultsList.toList(), toolErrors = toolErrorsList.toList(),
+              content = sb.toString(),
+              reasoning = allReasoning,
+              isReasoningDone = !isReasoning,
+              toolCalls = toolCallsList.toList(),
+              toolResults = toolResultsList.toList(),
+              toolErrors = toolErrorsList.toList(),
               locationData = if (toolExecutor.locationUsedThisTurn) toolExecutor.lastLocationData else null,
             )
           }
@@ -946,6 +974,7 @@ class ChatViewModel @Inject constructor(
         _messages.value.dropLast(1).forEach { msg ->
           when (msg.role) {
             Role.USER -> chatMessages.add("user" to msg.content)
+
             Role.ASSISTANT -> {
               var content = msg.content
               if (msg.toolCalls.isNotEmpty()) {
@@ -958,6 +987,7 @@ class ChatViewModel @Inject constructor(
               }
               chatMessages.add("assistant" to content)
             }
+
             else -> {}
           }
         }
@@ -1040,7 +1070,11 @@ class ChatViewModel @Inject constructor(
         },
         buildMessages = { agent, prompt ->
           val agentPrompt = agent?.prompt ?: "You are a helpful agent. Complete the given task using your tools."
-          val remoteCtx = try { kotlinx.coroutines.runBlocking { remoteToolBridge.buildSystemContext() } } catch (_: Exception) { "" }
+          val remoteCtx = try {
+            kotlinx.coroutines.runBlocking { remoteToolBridge.buildSystemContext() }
+          } catch (_: Exception) {
+            ""
+          }
           val envContext = """
 
 ## Environment

@@ -51,18 +51,30 @@ object EnhancedPermissionHelper {
     android.Manifest.permission.POST_NOTIFICATIONS,
     // Camera (for QR/vision)
     android.Manifest.permission.CAMERA,
-  ) + if (Build.VERSION.SDK_INT >= 31) listOf(
-    android.Manifest.permission.BLUETOOTH_SCAN,
-    android.Manifest.permission.BLUETOOTH_CONNECT,
-    android.Manifest.permission.BLUETOOTH_ADVERTISE,
-  ) else emptyList() + if (Build.VERSION.SDK_INT >= 33) listOf(
-    android.Manifest.permission.READ_MEDIA_IMAGES,
-    android.Manifest.permission.READ_MEDIA_VIDEO,
-    android.Manifest.permission.READ_MEDIA_AUDIO,
-    android.Manifest.permission.NEARBY_WIFI_DEVICES,
-  ) else emptyList() + if (Build.VERSION.SDK_INT >= 34) listOf(
-    android.Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
-  ) else emptyList()
+  ) + if (Build.VERSION.SDK_INT >= 31) {
+    listOf(
+      android.Manifest.permission.BLUETOOTH_SCAN,
+      android.Manifest.permission.BLUETOOTH_CONNECT,
+      android.Manifest.permission.BLUETOOTH_ADVERTISE,
+    )
+  } else {
+    emptyList() + if (Build.VERSION.SDK_INT >= 33) {
+      listOf(
+        android.Manifest.permission.READ_MEDIA_IMAGES,
+        android.Manifest.permission.READ_MEDIA_VIDEO,
+        android.Manifest.permission.READ_MEDIA_AUDIO,
+        android.Manifest.permission.NEARBY_WIFI_DEVICES,
+      )
+    } else {
+      emptyList() + if (Build.VERSION.SDK_INT >= 34) {
+        listOf(
+          android.Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
+        )
+      } else {
+        emptyList()
+      }
+    }
+  }
 
   // Special permissions that need system-level granting
   val SPECIAL_PERMISSIONS = mapOf(
@@ -74,31 +86,29 @@ object EnhancedPermissionHelper {
     "BIND_ASSISTANT" to "android.permission.BIND_VOICE_INTERACTION",
   )
 
-  fun hasPermission(ctx: Context, permission: String): Boolean {
-    return ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
-  }
+  fun hasPermission(ctx: Context, permission: String): Boolean = ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
 
-  fun hasShizukuPermission(): Boolean {
-    return try {
-      Shizuku.isPreV11() || Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-    } catch (_: Exception) { false }
-    }
+  fun hasShizukuPermission(): Boolean = try {
+    Shizuku.isPreV11() || Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+  } catch (_: Exception) {
+    false
+  }
 
   /** Check + request permission with Shizuku/root fallback */
   fun ensurePermission(ctx: Context, vararg permissions: String): Boolean {
     if (permissions.all { hasPermission(ctx, it) }) return true
-    
+
     // Try Shizuku for elevated permissions
     if (hasShizukuPermission()) {
       return grantViaShizuku(ctx, *permissions)
     }
-    
+
     // Try root for WRITE_SECURE_SETTINGS etc.
     val needsElevated = permissions.any { it in SPECIAL_PERMISSIONS.values }
     if (needsElevated && RootDetector.hasRootAccess()) {
       return grantViaRoot(ctx, *permissions)
     }
-    
+
     // Standard permission request
     latch = CountDownLatch(1)
     granted = false
@@ -123,6 +133,7 @@ object EnhancedPermissionHelper {
         }
         false
       }
+
       "SYSTEM_ALERT_WINDOW" -> {
         if (Build.VERSION.SDK_INT >= 23) {
           if (Settings.canDrawOverlays(ctx)) return true
@@ -132,6 +143,7 @@ object EnhancedPermissionHelper {
         }
         true
       }
+
       "PACKAGE_USAGE_STATS" -> {
         try {
           val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
@@ -146,8 +158,11 @@ object EnhancedPermissionHelper {
           intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
           ctx.startActivity(intent)
           false
-        } catch (_: Exception) { false }
+        } catch (_: Exception) {
+          false
+        }
       }
+
       "NOTIFICATION_LISTENER" -> {
         val cn = android.content.ComponentName(ctx, NotificationCaptureService::class.java)
         val flat = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners")
@@ -157,6 +172,7 @@ object EnhancedPermissionHelper {
         ctx.startActivity(intent)
         false
       }
+
       "IGNORE_BATTERY_OPTIMIZATIONS" -> {
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
         if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) return true
@@ -165,22 +181,21 @@ object EnhancedPermissionHelper {
         ctx.startActivity(intent)
         false
       }
+
       else -> false
     }
   }
 
-  private fun grantViaShizuku(ctx: Context, vararg permissions: String): Boolean {
-    return try {
-      for (perm in permissions) {
-        try {
-          Shizuku.requestPermission(0)
-        } catch (_: Exception) {}
-      }
-      permissions.all { hasPermission(ctx, it) }
-    } catch (e: Exception) {
-      Log.w(TAG, "Shizuku grant failed: ${e.message}")
-      false
+  private fun grantViaShizuku(ctx: Context, vararg permissions: String): Boolean = try {
+    for (perm in permissions) {
+      try {
+        Shizuku.requestPermission(0)
+      } catch (_: Exception) {}
     }
+    permissions.all { hasPermission(ctx, it) }
+  } catch (e: Exception) {
+    Log.w(TAG, "Shizuku grant failed: ${e.message}")
+    false
   }
 
   private fun grantViaRoot(ctx: Context, vararg permissions: String): Boolean {
@@ -212,7 +227,10 @@ object EnhancedPermissionHelper {
 class EnhancedPermissionRequestActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    val perms = intent.getStringArrayExtra("permissions") ?: run { finish(); return }
+    val perms = intent.getStringArrayExtra("permissions") ?: run {
+      finish()
+      return
+    }
     requestPermissions(perms, 1)
   }
 

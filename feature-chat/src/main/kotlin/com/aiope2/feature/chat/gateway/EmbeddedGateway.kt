@@ -13,11 +13,11 @@ import java.net.ServerSocket
  * Prevents Android from killing it via foreground service + wake lock.
  */
 class EmbeddedGateway(private val ctx: Context) {
-  private val TAG = "EmbeddedGateway"
+  private val tag = "EmbeddedGateway"
   private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
   private var gatewayJob: Job? = null
   private var isRunning = false
-  
+
   data class GatewayConfig(
     val port: Int = 8080,
     val host: String = "0.0.0.0",
@@ -35,7 +35,7 @@ class EmbeddedGateway(private val ctx: Context) {
       val enabled: Boolean = true,
     )
   }
-  
+
   data class GatewayStatus(
     val isRunning: Boolean,
     val pid: String = "",
@@ -55,31 +55,31 @@ class EmbeddedGateway(private val ctx: Context) {
   /** Start the embedded gateway */
   fun start(config: GatewayConfig = GatewayConfig()): String {
     if (isRunning) return "Gateway already running"
-    
+
     return try {
       // Create gateway directory
       val gwDir = File(ctx.filesDir, "gateway")
       gwDir.mkdirs()
-      
+
       // Write gateway configuration
       writeGatewayConfig(gwDir, config)
-      
+
       // Write the gateway server script
       writeGatewayScript(gwDir)
-      
+
       // Start in proot with nohup
       scope.launch {
         try {
           isRunning = true
           ProotExecutor.exec(
-            ctx, 
+            ctx,
             "cd ${gwDir.absolutePath} && nohup node gateway.js > gateway.log 2>&1 &\necho $! > gateway.pid",
-            timeoutMs = 10000
+            timeoutMs = 10000,
           )
-          
+
           // Wait for it to start
           delay(3000)
-          
+
           // Verify it's running
           val pid = ProotExecutor.exec(ctx, "cat ${gwDir.absolutePath}/gateway.pid 2>/dev/null || echo 'NONE'")
           if (pid != "NONE" && pid.isNotBlank()) {
@@ -90,7 +90,7 @@ class EmbeddedGateway(private val ctx: Context) {
           isRunning = false
         }
       }
-      
+
       "Starting embedded gateway on port ${config.port}..."
     } catch (e: Exception) {
       "Error starting gateway: ${e.message}"
@@ -98,74 +98,66 @@ class EmbeddedGateway(private val ctx: Context) {
   }
 
   /** Stop the embedded gateway */
-  fun stop(): String {
-    return try {
-      val gwDir = File(ctx.filesDir, "gateway")
-      ProotExecutor.exec(ctx, "cd ${gwDir.absolutePath} && kill $(cat gateway.pid 2>/dev/null) 2>/dev/null || true", timeoutMs = 5000)
-      isRunning = false
-      gatewayJob?.cancel()
-      "Gateway stopped"
-    } catch (e: Exception) {
-      "Error stopping gateway: ${e.message}"
-    }
+  fun stop(): String = try {
+    val gwDir = File(ctx.filesDir, "gateway")
+    ProotExecutor.exec(ctx, "cd ${gwDir.absolutePath} && kill $(cat gateway.pid 2>/dev/null) 2>/dev/null || true", timeoutMs = 5000)
+    isRunning = false
+    gatewayJob?.cancel()
+    "Gateway stopped"
+  } catch (e: Exception) {
+    "Error stopping gateway: ${e.message}"
   }
 
   /** Get gateway status */
-  fun getStatus(): GatewayStatus {
-    return try {
-      val gwDir = File(ctx.filesDir, "gateway")
-      val pid = ProotExecutor.exec(ctx, "cat ${gwDir.absolutePath}/gateway.pid 2>/dev/null || echo ''", timeoutMs = 3000).trim()
-      val running = pid.isNotBlank() && ProotExecutor.exec(ctx, "kill -0 $pid 2>/dev/null && echo YES || echo NO", timeoutMs = 3000).trim() == "YES"
-      
-      GatewayStatus(
-        isRunning = running,
-        pid = pid,
-        port = if (running) 8080 else 0,
-      )
-    } catch (e: Exception) {
-      GatewayStatus(isRunning = false)
-    }
+  fun getStatus(): GatewayStatus = try {
+    val gwDir = File(ctx.filesDir, "gateway")
+    val pid = ProotExecutor.exec(ctx, "cat ${gwDir.absolutePath}/gateway.pid 2>/dev/null || echo ''", timeoutMs = 3000).trim()
+    val running = pid.isNotBlank() && ProotExecutor.exec(ctx, "kill -0 $pid 2>/dev/null && echo YES || echo NO", timeoutMs = 3000).trim() == "YES"
+
+    GatewayStatus(
+      isRunning = running,
+      pid = pid,
+      port = if (running) 8080 else 0,
+    )
+  } catch (e: Exception) {
+    GatewayStatus(isRunning = false)
   }
 
   /** Get gateway logs */
-  fun getLogs(lines: Int = 50): String {
-    return try {
-      val gwDir = File(ctx.filesDir, "gateway")
-      ProotExecutor.exec(ctx, "tail -n $lines ${gwDir.absolutePath}/gateway.log 2>/dev/null || echo 'No logs'")
-    } catch (e: Exception) {
-      "Error reading logs: ${e.message}"
-    }
+  fun getLogs(lines: Int = 50): String = try {
+    val gwDir = File(ctx.filesDir, "gateway")
+    ProotExecutor.exec(ctx, "tail -n $lines ${gwDir.absolutePath}/gateway.log 2>/dev/null || echo 'No logs'")
+  } catch (e: Exception) {
+    "Error reading logs: ${e.message}"
   }
 
   /** Install gateway dependencies */
-  fun installDependencies(): String {
-    return try {
-      val gwDir = File(ctx.filesDir, "gateway")
-      gwDir.mkdirs()
-      
-      // Check if node is available, install if not
-      val nodeCheck = ProotExecutor.exec(ctx, "which node 2>/dev/null || echo 'NO_NODE'", timeoutMs = 5000)
-      if (nodeCheck.contains("NO_NODE")) {
-        ProotExecutor.exec(ctx, "apk add nodejs npm 2>/dev/null || apt install -y nodejs npm 2>/dev/null || echo 'Install node manually'", timeoutMs = 120000)
-      }
-      
-      // Write package.json and install
-      val packageJson = """
-        {"name":"aiope-gateway-embedded","version":"1.0.0","dependencies":{"express":"^4.18.0","http-proxy-middleware":"^2.0.6","cors":"^2.8.5"}}
-      """.trimIndent()
-      File(gwDir, "package.json").writeText(packageJson)
-      
-      ProotExecutor.exec(ctx, "cd ${gwDir.absolutePath} && npm install 2>&1", timeoutMs = 120000)
-    } catch (e: Exception) {
-      "Error: ${e.message}"
+  fun installDependencies(): String = try {
+    val gwDir = File(ctx.filesDir, "gateway")
+    gwDir.mkdirs()
+
+    // Check if node is available, install if not
+    val nodeCheck = ProotExecutor.exec(ctx, "which node 2>/dev/null || echo 'NO_NODE'", timeoutMs = 5000)
+    if (nodeCheck.contains("NO_NODE")) {
+      ProotExecutor.exec(ctx, "apk add nodejs npm 2>/dev/null || apt install -y nodejs npm 2>/dev/null || echo 'Install node manually'", timeoutMs = 120000)
     }
+
+    // Write package.json and install
+    val packageJson = """
+        {"name":"aiope-gateway-embedded","version":"1.0.0","dependencies":{"express":"^4.18.0","http-proxy-middleware":"^2.0.6","cors":"^2.8.5"}}
+    """.trimIndent()
+    File(gwDir, "package.json").writeText(packageJson)
+
+    ProotExecutor.exec(ctx, "cd ${gwDir.absolutePath} && npm install 2>&1", timeoutMs = 120000)
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   private fun writeGatewayConfig(dir: File, config: GatewayConfig) {
     val providers = config.providers.joinToString(",\n") { p ->
       "    { name: '${p.name}', type: '${p.type}', apiKey: '${p.apiKey}', baseUrl: '${p.baseUrl}', enabled: ${p.enabled} }"
     }
-    
+
     val configJs = """
       module.exports = {
         port: ${config.port},
@@ -179,7 +171,7 @@ $providers
         ]
       };
     """.trimIndent()
-    
+
     File(dir, "config.js").writeText(configJs)
   }
 
@@ -243,7 +235,7 @@ $providers
         console.log(`AIOPE Gateway running on ${config.host}:${config.port}`);
       });
     """.trimIndent()
-    
+
     File(dir, "gateway.js").writeText(script)
   }
 

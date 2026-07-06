@@ -16,9 +16,9 @@ object RootDetector {
   private const val TAG = "RootDetector"
 
   enum class PrivilegeLevel {
-    NONE,           // No special access
-    SHIZUKU,        // Shizuku service available
-    ROOT,           // Full root access
+    NONE, // No special access
+    SHIZUKU, // Shizuku service available
+    ROOT, // Full root access
   }
 
   data class PrivilegeStatus(
@@ -41,17 +41,17 @@ object RootDetector {
   @Synchronized
   fun detect(ctx: Context): PrivilegeStatus {
     cachedStatus?.let { return it }
-    
+
     val hasRoot = checkRootAccess()
     val shizukuInfo = checkShizuku(ctx)
     val magiskInfo = checkMagisk()
-    
+
     val level = when {
       hasRoot -> PrivilegeLevel.ROOT
       shizukuInfo.first -> PrivilegeLevel.SHIZUKU
       else -> PrivilegeLevel.NONE
     }
-    
+
     val status = PrivilegeStatus(
       level = level,
       shizukuVersion = shizukuInfo.second,
@@ -70,7 +70,7 @@ object RootDetector {
       canUsageStats = canUsageStats(ctx),
       canNotificationListener = canNotificationListener(ctx),
     )
-    
+
     cachedStatus = status
     Log.i(TAG, "Privilege level: ${level.name}, Shizuku: ${shizukuInfo.first}, Root: $hasRoot, Magisk: ${magiskInfo.first}")
     return status
@@ -84,26 +84,28 @@ object RootDetector {
     Runtime.getRuntime().exec("su -c id").let { proc ->
       proc.waitFor(3, TimeUnit.SECONDS) && proc.exitValue() == 0
     }
-  } catch (_: Exception) { false }
+  } catch (_: Exception) {
+    false
+  }
 
   fun checkRootAccess(): Boolean = hasRootAccess()
 
-  private fun checkShizuku(ctx: Context): Pair<Boolean, Int> {
-    return try {
-      // Check if Shizuku is installed
-      ctx.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
-      // Try to bind to Shizuku service
-      val clazz = Class.forName("rikka.shizuku.Shizuku")
-      val binder = clazz.getMethod("getBinder").invoke(null)
-      val isAlive = clazz.getMethod("isPreV11")
-        ?.let { it.invoke(null) as? Boolean } ?: false
-      val version = try {
-        clazz.getMethod("getVersion").invoke(null) as? Int ?: -1
-      } catch (_: Exception) { -1 }
-      Pair(binder != null || isAlive, version)
+  private fun checkShizuku(ctx: Context): Pair<Boolean, Int> = try {
+    // Check if Shizuku is installed
+    ctx.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
+    // Try to bind to Shizuku service
+    val clazz = Class.forName("rikka.shizuku.Shizuku")
+    val binder = clazz.getMethod("getBinder").invoke(null)
+    val isAlive = clazz.getMethod("isPreV11")
+      ?.let { it.invoke(null) as? Boolean } ?: false
+    val version = try {
+      clazz.getMethod("getVersion").invoke(null) as? Int ?: -1
     } catch (_: Exception) {
-      Pair(false, -1)
+      -1
     }
+    Pair(binder != null || isAlive, version)
+  } catch (_: Exception) {
+    Pair(false, -1)
   }
 
   private fun checkMagisk(): Pair<Boolean, String> {
@@ -121,41 +123,43 @@ object RootDetector {
       try {
         val proc = Runtime.getRuntime().exec("magisk -V")
         proc.inputStream.bufferedReader().readText().trim()
-      } catch (_: Exception) { "unknown" }
-    } else ""
+      } catch (_: Exception) {
+        "unknown"
+      }
+    } else {
+      ""
+    }
     return Pair(found, version)
   }
 
-  private fun canWriteSecureSettings(ctx: Context): Boolean {
-    return try {
-      ctx.checkCallingOrSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
-    } catch (_: Exception) { false }
+  private fun canWriteSecureSettings(ctx: Context): Boolean = try {
+    ctx.checkCallingOrSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+  } catch (_: Exception) {
+    false
   }
 
-  private fun canDrawOverlays(ctx: Context): Boolean {
-    return if (Build.VERSION.SDK_INT >= 23) {
-      android.provider.Settings.canDrawOverlays(ctx)
-    } else true
+  private fun canDrawOverlays(ctx: Context): Boolean = if (Build.VERSION.SDK_INT >= 23) {
+    android.provider.Settings.canDrawOverlays(ctx)
+  } else {
+    true
   }
 
-  private fun canBindAssistant(ctx: Context): Boolean {
-    return ctx.packageManager.resolveService(
-      android.content.Intent(android.service.voice.VoiceInteractionService.SERVICE_INTERFACE),
-      PackageManager.MATCH_ALL
-    ) != null
-  }
+  private fun canBindAssistant(ctx: Context): Boolean = ctx.packageManager.resolveService(
+    android.content.Intent(android.service.voice.VoiceInteractionService.SERVICE_INTERFACE),
+    PackageManager.MATCH_ALL,
+  ) != null
 
-  private fun canUsageStats(ctx: Context): Boolean {
-    return try {
-      val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
-      val mode = if (Build.VERSION.SDK_INT >= 29) {
-        appOps.unsafeCheckOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), ctx.packageName)
-      } else {
-        @Suppress("DEPRECATION")
-        appOps.checkOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), ctx.packageName)
-      }
-      mode == android.app.AppOpsManager.MODE_ALLOWED
-    } catch (_: Exception) { false }
+  private fun canUsageStats(ctx: Context): Boolean = try {
+    val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+    val mode = if (Build.VERSION.SDK_INT >= 29) {
+      appOps.unsafeCheckOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), ctx.packageName)
+    } else {
+      @Suppress("DEPRECATION")
+      appOps.checkOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), ctx.packageName)
+    }
+    mode == android.app.AppOpsManager.MODE_ALLOWED
+  } catch (_: Exception) {
+    false
   }
 
   private fun canNotificationListener(ctx: Context): Boolean {
@@ -164,42 +168,39 @@ object RootDetector {
     return flat?.contains(cn.flattenToString()) == true
   }
 
-  private fun hasPermission(ctx: Context, perm: String): Boolean {
-    return ctx.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
-  }
+  private fun hasPermission(ctx: Context, perm: String): Boolean = ctx.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
 
   /** Execute command with highest available privilege */
-  fun execWithPrivilege(cmd: String): String {
-    return when (detectLevel()) {
-      PrivilegeLevel.ROOT -> execAsRoot(cmd)
-      PrivilegeLevel.SHIZUKU -> execViaShizuku(cmd)
-      PrivilegeLevel.NONE -> "Error: No elevated privileges available"
-    }
+  fun execWithPrivilege(cmd: String): String = when (detectLevel()) {
+    PrivilegeLevel.ROOT -> execAsRoot(cmd)
+    PrivilegeLevel.SHIZUKU -> execViaShizuku(cmd)
+    PrivilegeLevel.NONE -> "Error: No elevated privileges available"
   }
 
-  private fun detectLevel(): PrivilegeLevel {
-    return if (hasRootAccess()) PrivilegeLevel.ROOT
-    else PrivilegeLevel.NONE // Shizuku check needs context
+  private fun detectLevel(): PrivilegeLevel = if (hasRootAccess()) {
+    PrivilegeLevel.ROOT
+  } else {
+    PrivilegeLevel.NONE // Shizuku check needs context
   }
 
-  fun execAsRoot(cmd: String): String {
-    return try {
-      val proc = Runtime.getRuntime().exec("su -c $cmd")
-      val output = proc.inputStream.bufferedReader().readText()
-      val error = proc.errorStream.bufferedReader().readText()
-      proc.waitFor(30, TimeUnit.SECONDS)
-      if (output.isNotBlank()) output else error
-    } catch (e: Exception) { "Error: ${e.message}" }
+  fun execAsRoot(cmd: String): String = try {
+    val proc = Runtime.getRuntime().exec("su -c $cmd")
+    val output = proc.inputStream.bufferedReader().readText()
+    val error = proc.errorStream.bufferedReader().readText()
+    proc.waitFor(30, TimeUnit.SECONDS)
+    if (output.isNotBlank()) output else error
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
-  private fun execViaShizuku(cmd: String): String {
-    return try {
-      // Use Shizuku remote process execution
-      val clazz = Class.forName("rikka.shizuku.Shizuku")
-      val newProcess = clazz.getMethod("newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java)
-      val process = newProcess.invoke(null, arrayOf("/system/bin/sh", "-c", cmd), null, null) as? Process
-      process?.inputStream?.bufferedReader()?.readText() ?: "Shizuku process failed"
-    } catch (e: Exception) { "Shizuku error: ${e.message}" }
+  private fun execViaShizuku(cmd: String): String = try {
+    // Use Shizuku remote process execution
+    val clazz = Class.forName("rikka.shizuku.Shizuku")
+    val newProcess = clazz.getMethod("newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java)
+    val process = newProcess.invoke(null, arrayOf("/system/bin/sh", "-c", cmd), null, null) as? Process
+    process?.inputStream?.bufferedReader()?.readText() ?: "Shizuku process failed"
+  } catch (e: Exception) {
+    "Shizuku error: ${e.message}"
   }
 }
 
@@ -211,14 +212,14 @@ class NotificationCaptureService : android.service.notification.NotificationList
   companion object {
     val activeNotifications = mutableListOf<NotificationInfo>()
   }
-  
+
   data class NotificationInfo(
     val packageName: String,
     val title: String,
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
   )
-  
+
   override fun onNotificationPosted(sbn: android.service.notification.StatusBarNotification) {
     val info = NotificationInfo(
       packageName = sbn.packageName,
@@ -230,6 +231,6 @@ class NotificationCaptureService : android.service.notification.NotificationList
       if (activeNotifications.size > 100) activeNotifications.removeAt(activeNotifications.size - 1)
     }
   }
-  
+
   override fun onNotificationRemoved(sbn: android.service.notification.StatusBarNotification?) {}
 }

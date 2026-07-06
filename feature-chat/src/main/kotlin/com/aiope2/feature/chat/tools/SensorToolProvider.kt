@@ -15,7 +15,7 @@ import kotlin.math.sqrt
  * barometer, light, proximity, temperature, humidity, step counter.
  */
 class SensorToolProvider(private val ctx: Context) {
-  private val TAG = "SensorTool"
+  private val tag = "SensorTool"
   private val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
   /** List all available sensors */
@@ -35,7 +35,7 @@ class SensorToolProvider(private val ctx: Context) {
   fun readSensor(sensorType: String, durationMs: Long = 1000, samples: Int = 10): String {
     val type = parseSensorType(sensorType)
     if (type < 0) return "Unknown sensor type: $sensorType. Use list_sensors to see available types."
-    
+
     val sensor = sensorManager.getDefaultSensor(type)
       ?: return "Sensor not available on this device: $sensorType"
 
@@ -43,7 +43,7 @@ class SensorToolProvider(private val ctx: Context) {
       val readings = mutableListOf<Triple<Float, Float, Float>>()
       val latch = CountDownLatch(1)
       var count = 0
-      
+
       val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
           when (event.values.size) {
@@ -56,18 +56,18 @@ class SensorToolProvider(private val ctx: Context) {
         }
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
       }
-      
+
       sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
       val gotData = latch.await(durationMs, TimeUnit.MILLISECONDS)
       sensorManager.unregisterListener(listener)
-      
+
       if (readings.isEmpty()) {
         "No readings from $sensorType. Try a longer duration."
       } else {
         val avgX = readings.map { it.first }.average()
         val avgY = readings.map { it.second }.average()
         val avgZ = readings.map { it.third }.average()
-        
+
         buildString {
           appendLine("=== $sensorType Readings (${readings.size} samples) ===")
           appendLine("Average: x=${"%.3f".format(avgX)}, y=${"%.3f".format(avgY)}, z=${"%.3f".format(avgZ)}")
@@ -88,44 +88,42 @@ class SensorToolProvider(private val ctx: Context) {
   }
 
   /** Get device orientation using rotation vector or accelerometer + magnetometer */
-  fun getOrientation(): String {
-    return try {
-      // Try rotation vector first (most accurate)
-      val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-      if (rotationSensor != null) {
-        val latch = CountDownLatch(1)
-        val rotationMatrix = FloatArray(9)
-        val orientationAngles = FloatArray(3)
-        
-        val listener = object : SensorEventListener {
-          override fun onSensorChanged(event: SensorEvent) {
-            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-            SensorManager.getOrientation(rotationMatrix, orientationAngles)
-            latch.countDown()
-          }
-          override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+  fun getOrientation(): String = try {
+    // Try rotation vector first (most accurate)
+    val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+    if (rotationSensor != null) {
+      val latch = CountDownLatch(1)
+      val rotationMatrix = FloatArray(9)
+      val orientationAngles = FloatArray(3)
+
+      val listener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+          SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+          SensorManager.getOrientation(rotationMatrix, orientationAngles)
+          latch.countDown()
         }
-        
-        sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_NORMAL)
-        latch.await(2000, TimeUnit.MILLISECONDS)
-        sensorManager.unregisterListener(listener)
-        
-        val azimuth = Math.toDegrees(orientationAngles[0].toDouble())
-        val pitch = Math.toDegrees(orientationAngles[1].toDouble())
-        val roll = Math.toDegrees(orientationAngles[2].toDouble())
-        
-        buildString {
-          appendLine("=== Device Orientation ===")
-          appendLine("Azimuth: ${"%.1f".format(azimuth)}° (${compassDirection(azimuth)})")
-          appendLine("Pitch: ${"%.1f".format(pitch)}°")
-          appendLine("Roll: ${"%.1f".format(roll)}°")
-        }
-      } else {
-        "Rotation vector sensor not available. Try read_sensor with accelerometer."
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
       }
-    } catch (e: Exception) {
-      "Error: ${e.message}"
+
+      sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_NORMAL)
+      latch.await(2000, TimeUnit.MILLISECONDS)
+      sensorManager.unregisterListener(listener)
+
+      val azimuth = Math.toDegrees(orientationAngles[0].toDouble())
+      val pitch = Math.toDegrees(orientationAngles[1].toDouble())
+      val roll = Math.toDegrees(orientationAngles[2].toDouble())
+
+      buildString {
+        appendLine("=== Device Orientation ===")
+        appendLine("Azimuth: ${"%.1f".format(azimuth)}° (${compassDirection(azimuth)})")
+        appendLine("Pitch: ${"%.1f".format(pitch)}°")
+        appendLine("Roll: ${"%.1f".format(roll)}°")
+      }
+    } else {
+      "Rotation vector sensor not available. Try read_sensor with accelerometer."
     }
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   /** Get step count if available */
@@ -149,26 +147,24 @@ class SensorToolProvider(private val ctx: Context) {
     }
   }
 
-  private fun parseSensorType(name: String): Int {
-    return when (name.lowercase().replace(" ", "_")) {
-      "accelerometer" -> Sensor.TYPE_ACCELEROMETER
-      "gyroscope" -> Sensor.TYPE_GYROSCOPE
-      "magnetometer", "magnetic_field" -> Sensor.TYPE_MAGNETIC_FIELD
-      "light" -> Sensor.TYPE_LIGHT
-      "proximity" -> Sensor.TYPE_PROXIMITY
-      "pressure", "barometer" -> Sensor.TYPE_PRESSURE
-      "temperature" -> Sensor.TYPE_AMBIENT_TEMPERATURE
-      "humidity" -> Sensor.TYPE_RELATIVE_HUMIDITY
-      "step_counter" -> Sensor.TYPE_STEP_COUNTER
-      "step_detector" -> Sensor.TYPE_STEP_DETECTOR
-      "heart_rate" -> Sensor.TYPE_HEART_RATE
-      "rotation_vector" -> Sensor.TYPE_ROTATION_VECTOR
-      "game_rotation_vector" -> Sensor.TYPE_GAME_ROTATION_VECTOR
-      "gravity" -> Sensor.TYPE_GRAVITY
-      "linear_acceleration" -> Sensor.TYPE_LINEAR_ACCELERATION
-      "significant_motion" -> Sensor.TYPE_SIGNIFICANT_MOTION
-      else -> -1
-    }
+  private fun parseSensorType(name: String): Int = when (name.lowercase().replace(" ", "_")) {
+    "accelerometer" -> Sensor.TYPE_ACCELEROMETER
+    "gyroscope" -> Sensor.TYPE_GYROSCOPE
+    "magnetometer", "magnetic_field" -> Sensor.TYPE_MAGNETIC_FIELD
+    "light" -> Sensor.TYPE_LIGHT
+    "proximity" -> Sensor.TYPE_PROXIMITY
+    "pressure", "barometer" -> Sensor.TYPE_PRESSURE
+    "temperature" -> Sensor.TYPE_AMBIENT_TEMPERATURE
+    "humidity" -> Sensor.TYPE_RELATIVE_HUMIDITY
+    "step_counter" -> Sensor.TYPE_STEP_COUNTER
+    "step_detector" -> Sensor.TYPE_STEP_DETECTOR
+    "heart_rate" -> Sensor.TYPE_HEART_RATE
+    "rotation_vector" -> Sensor.TYPE_ROTATION_VECTOR
+    "game_rotation_vector" -> Sensor.TYPE_GAME_ROTATION_VECTOR
+    "gravity" -> Sensor.TYPE_GRAVITY
+    "linear_acceleration" -> Sensor.TYPE_LINEAR_ACCELERATION
+    "significant_motion" -> Sensor.TYPE_SIGNIFICANT_MOTION
+    else -> -1
   }
 
   private fun sensorTypeName(type: Int): String = when (type) {

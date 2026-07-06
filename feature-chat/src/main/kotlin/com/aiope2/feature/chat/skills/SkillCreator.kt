@@ -18,7 +18,7 @@ class SkillCreator(
   private val skillManager: SkillManager,
   private val providerStore: ProviderStore,
 ) {
-  private val TAG = "SkillCreator"
+  private val tag = "SkillCreator"
 
   data class CreationResult(
     val success: Boolean,
@@ -33,23 +33,23 @@ class SkillCreator(
   suspend fun createFromDescription(description: String): CreationResult = withContext(Dispatchers.IO) {
     try {
       val profile = providerStore.getActive()
-      
+
       // Build prompt for skill generation
       val prompt = buildSkillGenerationPrompt(description)
-      
+
       val orchestrator = StreamingOrchestrator(
         baseUrl = profile.effectiveApiBase(),
         apiKey = profile.apiKey,
         model = profile.selectedModelId,
       )
-      
+
       val sb = StringBuilder()
       orchestrator.stream(listOf("user" to prompt)).collect { chunk ->
         if (chunk.content.isNotEmpty()) sb.append(chunk.content)
       }
-      
+
       val response = sb.toString()
-      
+
       // Parse the generated skill markdown
       val skill = parseGeneratedSkill(response)
       if (skill != null) {
@@ -84,30 +84,27 @@ class SkillCreator(
     content: String,
     triggers: List<String> = emptyList(),
     tools: List<String> = emptyList(),
-  ): CreationResult {
-    return try {
-      val skill = skillManager.createSkill(
-        name = name,
-        description = description,
-        category = category,
-        content = content,
-        triggers = triggers,
-      )
-      CreationResult(
-        success = true,
-        skill = skill,
-        message = "Created skill: **${skill.name}** (${skill.id})",
-      )
-    } catch (e: Exception) {
-      CreationResult(
-        success = false,
-        message = "Error: ${e.message}",
-      )
-    }
+  ): CreationResult = try {
+    val skill = skillManager.createSkill(
+      name = name,
+      description = description,
+      category = category,
+      content = content,
+      triggers = triggers,
+    )
+    CreationResult(
+      success = true,
+      skill = skill,
+      message = "Created skill: **${skill.name}** (${skill.id})",
+    )
+  } catch (e: Exception) {
+    CreationResult(
+      success = false,
+      message = "Error: ${e.message}",
+    )
   }
 
-  private fun buildSkillGenerationPrompt(userDescription: String): String {
-    return """Create an AIOPE skill based on this description: "$userDescription"
+  private fun buildSkillGenerationPrompt(userDescription: String): String = """Create an AIOPE skill based on this description: "$userDescription"
 
 Generate a skill in the following format:
 
@@ -135,12 +132,11 @@ Rules:
 - Triggers should be natural language phrases users might say
 
 Respond ONLY with the skill markdown, no extra text."""
-  }
 
   private fun parseGeneratedSkill(response: String): SkillManager.Skill? {
     // Extract markdown between --- frontmatter blocks
     val trimmed = response.trim()
-    
+
     // Check if response has frontmatter
     return if (trimmed.startsWith("---")) {
       SkillManager.Skill.fromMarkdown(trimmed)
@@ -148,11 +144,11 @@ Respond ONLY with the skill markdown, no extra text."""
       // Try to wrap in frontmatter if AI didn't format correctly
       val lines = trimmed.lines()
       val firstLine = lines.firstOrNull() ?: ""
-      
+
       // Try to extract a name from the first line
       val name = firstLine.removePrefix("#").trim().takeIf { it.isNotBlank() } ?: "Custom Skill"
       val description = lines.getOrNull(1)?.trim()?.removePrefix("*")?.trim() ?: "User-created skill"
-      
+
       SkillManager.Skill(
         id = java.util.UUID.randomUUID().toString().take(8),
         name = name,
@@ -167,7 +163,7 @@ Respond ONLY with the skill markdown, no extra text."""
   private fun extractTriggers(name: String, content: String): List<String> {
     val triggers = mutableListOf<String>()
     triggers.add(name.lowercase())
-    
+
     // Extract common keywords from content
     val keywords = listOf(
       "research", "code", "debug", "analyze", "scrape", "deploy",
@@ -175,31 +171,27 @@ Respond ONLY with the skill markdown, no extra text."""
       "search", "fetch", "process", "convert", "generate", "create",
       "manage", "monitor", "backup", "restore", "optimize",
     )
-    
+
     val lower = content.lowercase()
     keywords.forEach { keyword ->
       if (lower.contains(keyword) && !triggers.contains(keyword)) {
         triggers.add(keyword)
       }
     }
-    
+
     return triggers.take(10)
   }
 
   companion object {
     /** Check if text is a /create-skill command */
-    fun isCreateCommand(text: String): Boolean {
-      return text.trim().startsWith("/create-skill") || text.trim().startsWith("/new-skill")
-    }
-    
+    fun isCreateCommand(text: String): Boolean = text.trim().startsWith("/create-skill") || text.trim().startsWith("/new-skill")
+
     /** Extract description from /create-skill command */
-    fun extractDescription(text: String): String {
-      return text.trim()
-        .removePrefix("/create-skill")
-        .removePrefix("/new-skill")
-        .trim()
-        .removePrefix(":")
-        .trim()
-    }
+    fun extractDescription(text: String): String = text.trim()
+      .removePrefix("/create-skill")
+      .removePrefix("/new-skill")
+      .trim()
+      .removePrefix(":")
+      .trim()
   }
 }

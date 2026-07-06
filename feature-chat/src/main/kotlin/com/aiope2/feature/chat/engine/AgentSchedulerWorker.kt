@@ -28,7 +28,9 @@ class AgentSchedulerWorker(
   override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
     try {
       val db = androidx.room.Room.databaseBuilder(
-        appContext, ChatDatabase::class.java, "aiope2-chat.db"
+        appContext,
+        ChatDatabase::class.java,
+        "aiope2-chat.db",
       ).addMigrations(
         com.aiope2.feature.chat.di.MIGRATION_1_2,
         com.aiope2.feature.chat.di.MIGRATION_2_3,
@@ -60,7 +62,7 @@ class AgentSchedulerWorker(
             prompt = task.prompt,
             status = "running",
             scheduledTaskId = task.id,
-          )
+          ),
         )
 
         // Update schedule timing
@@ -101,42 +103,40 @@ class AgentSchedulerWorker(
     dao: com.aiope2.feature.chat.db.ChatDao,
     provider: ProviderProfile,
     task: ScheduledTaskEntity,
-  ): String {
-    return try {
-      // Resolve agent config
-      val agent: AgentEntity? = dao.getAgentByName(task.agentName)
-      val basePrompt = agent?.prompt ?: "You are a scheduled task agent. Complete the assigned task using your tools."
-      val systemPrompt = basePrompt + "\n\n## Environment\n- Date/Time: " + java.time.LocalDateTime.now().toString() + "\n- Platform: Android (AIOPE scheduled task)\n- Execution: Background (WorkManager)\n\n## Tool Execution\nYou MUST use tools to complete your task.\n- search_web: search the web\n- fetch_url: fetch URL content\n- read_file/write_file/list_directory: filesystem\n- run_sh: shell commands\n- send_sms: send SMS\n- send_notification: show notification\n- set_alarm: set alarm\n- ssh_exec: remote command\n- memory_store/memory_recall: persistent memory\n\nDO NOT describe what you would do — actually DO it with tools.\nIf a tool fails, try an alternative. When finished, summarize what was accomplished."
-      val modelId = agent?.model?.ifEmpty { null } ?: provider.selectedModelId
-      val temperature = agent?.temperature ?: 0.7f
+  ): String = try {
+    // Resolve agent config
+    val agent: AgentEntity? = dao.getAgentByName(task.agentName)
+    val basePrompt = agent?.prompt ?: "You are a scheduled task agent. Complete the assigned task using your tools."
+    val systemPrompt = basePrompt + "\n\n## Environment\n- Date/Time: " + java.time.LocalDateTime.now().toString() + "\n- Platform: Android (AIOPE scheduled task)\n- Execution: Background (WorkManager)\n\n## Tool Execution\nYou MUST use tools to complete your task.\n- search_web: search the web\n- fetch_url: fetch URL content\n- read_file/write_file/list_directory: filesystem\n- run_sh: shell commands\n- send_sms: send SMS\n- send_notification: show notification\n- set_alarm: set alarm\n- ssh_exec: remote command\n- memory_store/memory_recall: persistent memory\n\nDO NOT describe what you would do — actually DO it with tools.\nIf a tool fails, try an alternative. When finished, summarize what was accomplished."
+    val modelId = agent?.model?.ifEmpty { null } ?: provider.selectedModelId
+    val temperature = agent?.temperature ?: 0.7f
 
-      // Build messages
-      val messages = listOf("system" to systemPrompt, "user" to task.prompt)
+    // Build messages
+    val messages = listOf("system" to systemPrompt, "user" to task.prompt)
 
-      // Resolve tools from timer config
-      val timerTools = task.tools.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-      val toolDefs = if (timerTools.isNotEmpty()) buildWorkerToolDefs(timerTools) else emptyList()
+    // Resolve tools from timer config
+    val timerTools = task.tools.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    val toolDefs = if (timerTools.isNotEmpty()) buildWorkerToolDefs(timerTools) else emptyList()
 
-      // Create orchestrator with tools
-      val orchestrator = StreamingOrchestrator(
-        baseUrl = provider.effectiveApiBase(),
-        apiKey = provider.apiKey,
-        model = modelId,
-        tools = toolDefs,
-        onToolCall = { name, args -> executeWorkerTool(name, args) },
-        temperature = temperature,
-      )
+    // Create orchestrator with tools
+    val orchestrator = StreamingOrchestrator(
+      baseUrl = provider.effectiveApiBase(),
+      apiKey = provider.apiKey,
+      model = modelId,
+      tools = toolDefs,
+      onToolCall = { name, args -> executeWorkerTool(name, args) },
+      temperature = temperature,
+    )
 
-      // Stream and collect
-      val sb = StringBuilder()
-      orchestrator.stream(messages).collect { chunk ->
-        if (chunk.content.isNotEmpty()) sb.append(chunk.content)
-      }
-
-      sb.toString().ifEmpty { "(no output)" }
-    } catch (e: Exception) {
-      "Error: ${e.message ?: "unknown"}"
+    // Stream and collect
+    val sb = StringBuilder()
+    orchestrator.stream(messages).collect { chunk ->
+      if (chunk.content.isNotEmpty()) sb.append(chunk.content)
     }
+
+    sb.toString().ifEmpty { "(no output)" }
+  } catch (e: Exception) {
+    "Error: ${e.message ?: "unknown"}"
   }
 
   /** Tool definitions available in background worker context */
@@ -173,43 +173,51 @@ class AgentSchedulerWorker(
           proc.waitFor()
           (output + err).take(4000)
         }
+
         "read_file" -> {
           val path = args["path"]?.toString() ?: return "Error: no path"
           java.io.File(path).readText().take(8000)
         }
+
         "write_file" -> {
           val path = args["path"]?.toString() ?: return "Error: no path"
           val content = args["content"]?.toString() ?: return "Error: no content"
           java.io.File(path).apply { parentFile?.mkdirs() }.writeText(content)
           "Written to $path"
         }
+
         "list_directory" -> {
           val path = args["path"]?.toString() ?: return "Error: no path"
           java.io.File(path).listFiles()?.joinToString("\n") { (if (it.isDirectory) "d " else "f ") + it.name } ?: "Empty or not found"
         }
+
         "search_web" -> {
           val query = args["query"]?.toString() ?: return "Error: no query"
           val url = "https://search.xnet.ngo/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&format=json"
           val response = okhttp3.OkHttpClient().newCall(okhttp3.Request.Builder().url(url).build()).execute()
           response.body?.string()?.take(4000) ?: "No results"
         }
+
         "fetch_url" -> {
           val url = args["url"]?.toString() ?: return "Error: no url"
           val response = okhttp3.OkHttpClient().newCall(okhttp3.Request.Builder().url(url).build()).execute()
           response.body?.string()?.take(8000) ?: "Empty response"
         }
+
         "send_sms" -> {
           val to = args["to"]?.toString() ?: return "Error: no recipient"
           val message = args["message"]?.toString() ?: return "Error: no message"
           android.telephony.SmsManager.getDefault().sendTextMessage(to, null, message, null, null)
           "SMS sent to $to"
         }
+
         "send_notification" -> {
           val title = args["title"]?.toString() ?: "Agent"
           val body = args["body"]?.toString() ?: ""
           showNotification(title, body)
           "Notification sent"
         }
+
         "set_alarm" -> {
           val hour = (args["hour"] as? Number)?.toInt() ?: return "Error: no hour"
           val minute = (args["minute"] as? Number)?.toInt() ?: 0
@@ -224,6 +232,7 @@ class AgentSchedulerWorker(
           appContext.startActivity(intent)
           "Alarm set for $hour:${minute.toString().padStart(2, '0')} — $label"
         }
+
         "ssh_exec" -> {
           val host = args["host"]?.toString() ?: return "Error: no host"
           val cmd = args["command"]?.toString() ?: return "Error: no command"
@@ -234,6 +243,7 @@ class AgentSchedulerWorker(
           proc.waitFor()
           (output + err).take(4000)
         }
+
         "memory_store" -> {
           val key = args["key"]?.toString() ?: return "Error: no key"
           val value = args["value"]?.toString() ?: return "Error: no value"
@@ -244,6 +254,7 @@ class AgentSchedulerWorker(
           db.close()
           "Stored: $key"
         }
+
         "memory_recall" -> {
           val query = args["query"]?.toString() ?: return "Error: no query"
           val db = androidx.room.Room.databaseBuilder(appContext, ChatDatabase::class.java, "aiope2-chat.db")
@@ -252,9 +263,13 @@ class AgentSchedulerWorker(
           val memories = db.chatDao().getAllMemories()
           db.close()
           val matches = memories.filter { it.key.contains(query, true) || it.content.contains(query, true) }
-          if (matches.isEmpty()) "No memories matching '$query'"
-          else matches.joinToString("\n") { "${it.key}: ${it.content.take(200)}" }
+          if (matches.isEmpty()) {
+            "No memories matching '$query'"
+          } else {
+            matches.joinToString("\n") { "${it.key}: ${it.content.take(200)}" }
+          }
         }
+
         else -> "Tool '$name' not available in background mode"
       }
     } catch (e: Exception) {
@@ -287,6 +302,7 @@ class AgentSchedulerWorker(
         cal.add(Calendar.HOUR_OF_DAY, 1)
         cal.timeInMillis
       }
+
       task.cronDaysOfWeek.isEmpty() -> {
         // Daily: next run tomorrow at cronHour
         cal.add(Calendar.DAY_OF_YEAR, 1)
@@ -294,6 +310,7 @@ class AgentSchedulerWorker(
         cal.set(Calendar.MINUTE, task.cronMinute)
         cal.timeInMillis
       }
+
       else -> {
         // Weekly: next matching day
         cal.add(Calendar.DAY_OF_YEAR, 1)
@@ -315,7 +332,7 @@ class AgentSchedulerWorker(
     val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       nm.createNotificationChannel(
-        NotificationChannel("agent_timers", "Agent Timers", NotificationManager.IMPORTANCE_DEFAULT)
+        NotificationChannel("agent_timers", "Agent Timers", NotificationManager.IMPORTANCE_DEFAULT),
       )
     }
     val notification = NotificationCompat.Builder(appContext, "agent_timers")
@@ -336,7 +353,7 @@ class AgentSchedulerWorker(
         .setConstraints(
           Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+            .build(),
         )
         .build()
 

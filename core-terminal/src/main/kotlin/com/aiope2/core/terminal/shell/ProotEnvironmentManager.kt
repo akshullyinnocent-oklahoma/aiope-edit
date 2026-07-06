@@ -102,7 +102,7 @@ object ProotEnvironmentManager {
         packageManager = "apt",
         setupCommands = listOf(
           "apt update",
-          "apt install -y bash curl wget git nano python3 python3-pip nodejs npm build-essential"
+          "apt install -y bash curl wget git nano python3 python3-pip nodejs npm build-essential",
         ),
         minimumStorageMb = 500,
       ),
@@ -114,8 +114,8 @@ object ProotEnvironmentManager {
         rootfsUrlTemplate = "https://github.com/xnet-admin-1/box/releases/download/rootfs-debian-{version}/box-debian-{version}-{arch}.tar.xz",
         packageManager = "apt",
         setupCommands = listOf(
-          "apt update", 
-          "apt install -y bash curl wget git nano python3 python3-pip nodejs npm build-essential"
+          "apt update",
+          "apt install -y bash curl wget git nano python3 python3-pip nodejs npm build-essential",
         ),
         minimumStorageMb = 400,
       ),
@@ -181,9 +181,7 @@ object ProotEnvironmentManager {
   }
 
   /** Get the env directory for the active or specified environment */
-  fun getEnvDir(ctx: Context, envId: String? = null): File {
-    return getRootfsDir(ctx, envId).parentFile ?: File(ctx.filesDir, "env")
-  }
+  fun getEnvDir(ctx: Context, envId: String? = null): File = getRootfsDir(ctx, envId).parentFile ?: File(ctx.filesDir, "env")
 
   /** Create a new environment configuration (does not download yet) */
   fun createEnvironment(
@@ -202,7 +200,7 @@ object ProotEnvironmentManager {
     val resolvedPath = installPath.ifBlank {
       File(ctx.filesDir, "env/$distro-${System.currentTimeMillis()}").absolutePath
     }
-    
+
     val env = ProotEnvironment(
       id = java.util.UUID.randomUUID().toString().take(8),
       name = name,
@@ -214,7 +212,7 @@ object ProotEnvironmentManager {
       startupScript = startupScript,
       envVars = envVars,
     )
-    
+
     saveEnvironment(ctx, env)
     return env
   }
@@ -240,7 +238,7 @@ object ProotEnvironmentManager {
     }
     envs.removeAll { it.id == envId }
     saveEnvironments(ctx, envs)
-    
+
     // If we removed the active env, clear it
     if (getPrefs(ctx).getString(KEY_ACTIVE_ENV, "") == envId) {
       getPrefs(ctx).edit { remove(KEY_ACTIVE_ENV) }
@@ -253,15 +251,15 @@ object ProotEnvironmentManager {
       val distroDef = DistroRegistry.get(env.distro) ?: return@withContext false
       val rootfs = File(env.installPath)
       rootfs.mkdirs()
-      
+
       logCb("Setting up ${distroDef.name} ${env.version}...")
-      
+
       // Check if already installed
       if (isEnvironmentInstalled(env)) {
         logCb("Environment already installed at ${env.installPath}")
         return@withContext true
       }
-      
+
       // For now, use the existing bootstrap for Alpine
       // For other distros, we'd download their rootfs
       if (env.distro == "alpine") {
@@ -301,7 +299,7 @@ object ProotEnvironmentManager {
         rcFile.setExecutable(true)
         logCb("Startup script written")
       }
-      
+
       // Write environment variables
       if (env.envVars.isNotEmpty()) {
         val profileFile = File(env.installPath, "root/.profile")
@@ -311,7 +309,7 @@ object ProotEnvironmentManager {
         }
         logCb("Environment variables configured")
       }
-      
+
       // Install requested packages
       val distroDef = DistroRegistry.get(env.distro)
       if (distroDef != null && env.packages.isNotEmpty()) {
@@ -326,12 +324,12 @@ object ProotEnvironmentManager {
           ProotExecutor.exec(ctx, pkgCmd, timeoutMs = 300_000)
         }
       }
-      
+
       // Setup Tailscale if enabled
       if (env.tailscaleEnabled) {
         TailscaleManager.setupTailscale(ctx, env, logCb)
       }
-      
+
       logCb("Environment configured: ${env.name}")
     } catch (e: Exception) {
       Log.e(TAG, "Configuration failed", e)
@@ -374,5 +372,7 @@ object ProotEnvironmentManager {
 
   private fun fromJsonOrNull(j: JSONObject): ProotEnvironment? = try {
     ProotEnvironment.fromJson(j)
-  } catch (_: Exception) { null }
+  } catch (_: Exception) {
+    null
+  }
 }

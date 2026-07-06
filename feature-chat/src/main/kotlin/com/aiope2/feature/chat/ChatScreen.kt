@@ -1,5 +1,7 @@
 package com.aiope2.feature.chat
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,8 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -541,27 +541,29 @@ private fun ChatInput(onSend: (String, List<String>) -> Unit, onStop: () -> Unit
       val mime = context.contentResolver.getType(it) ?: ""
       if (mime.startsWith("image/")) {
         pendingImages.add(it.toString())
-      } else scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        // Copy to sandbox (files/home/)
-        val homeDir = java.io.File(context.filesDir, "home")
-        homeDir.mkdirs()
-        var name = "file_${System.currentTimeMillis()}"
-        context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
-          val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-          if (nameIdx != -1 && cursor.moveToFirst()) {
-            name = cursor.getString(nameIdx)
+      } else {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+          // Copy to sandbox (files/home/)
+          val homeDir = java.io.File(context.filesDir, "home")
+          homeDir.mkdirs()
+          var name = "file_${System.currentTimeMillis()}"
+          context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
+            val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (nameIdx != -1 && cursor.moveToFirst()) {
+              name = cursor.getString(nameIdx)
+            }
           }
-        }
-        val dest = java.io.File(homeDir, name)
-        try {
-          context.contentResolver.openInputStream(it)?.use { input ->
-            dest.outputStream().use { output -> input.copyTo(output) }
+          val dest = java.io.File(homeDir, name)
+          try {
+            context.contentResolver.openInputStream(it)?.use { input ->
+              dest.outputStream().use { output -> input.copyTo(output) }
+            }
+            val msg = (if (text.isNotBlank()) "\n" else "") + "[File imported: $name (to ~/)]"
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + msg }
+          } catch (e: Exception) {
+            val errorMsg = "\n[Import error: ${e.message}]"
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + errorMsg }
           }
-          val msg = (if (text.isNotBlank()) "\n" else "") + "[File imported: $name (to ~/)]"
-          kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + msg }
-        } catch (e: Exception) {
-          val errorMsg = "\n[Import error: ${e.message}]"
-          kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + errorMsg }
         }
       }
     }
@@ -644,13 +646,16 @@ private fun ChatInput(onSend: (String, List<String>) -> Unit, onStop: () -> Unit
       }
       // Realtime voice button (always available via task model)
       IconButton(
-        onClick = { onToggleVoice() }
+        onClick = { onToggleVoice() },
       ) {
         Icon(
           imageVector = if (isInRealtimeVoice) Icons.Default.CallEnd else Icons.Default.Call,
           contentDescription = if (isInRealtimeVoice) "End voice call" else "Start voice call",
-          tint = if (isInRealtimeVoice) MaterialTheme.colorScheme.error 
-                 else MaterialTheme.colorScheme.primary
+          tint = if (isInRealtimeVoice) {
+            MaterialTheme.colorScheme.error
+          } else {
+            MaterialTheme.colorScheme.primary
+          },
         )
       }
       // Waveform visualization when in voice mode
@@ -658,7 +663,7 @@ private fun ChatInput(onSend: (String, List<String>) -> Unit, onStop: () -> Unit
         RealtimeWaveform(
           isListening = isVoiceListening,
           isSpeaking = isVoiceSpeaking,
-          modifier = Modifier.weight(1f)
+          modifier = Modifier.weight(1f),
         )
       }
       // Clear
@@ -753,51 +758,57 @@ private fun ConversationSheet(viewModel: ChatViewModel, onDismiss: () -> Unit) {
 fun RealtimeWaveform(
   isListening: Boolean,
   isSpeaking: Boolean,
-  modifier: Modifier = Modifier
+  modifier: Modifier = Modifier,
 ) {
   val infiniteTransition = rememberInfiniteTransition(label = "waveform")
-  
+
   val alpha1 by infiniteTransition.animateFloat(
-    initialValue = 0.3f, targetValue = 1f,
+    initialValue = 0.3f,
+    targetValue = 1f,
     animationSpec = infiniteRepeatable(
       animation = tween(300, easing = LinearEasing),
-      repeatMode = RepeatMode.Reverse
-    ), label = "a1"
+      repeatMode = RepeatMode.Reverse,
+    ),
+    label = "a1",
   )
   val alpha2 by infiniteTransition.animateFloat(
-    initialValue = 1f, targetValue = 0.3f,
+    initialValue = 1f,
+    targetValue = 0.3f,
     animationSpec = infiniteRepeatable(
       animation = tween(400, easing = LinearEasing),
-      repeatMode = RepeatMode.Reverse
-    ), label = "a2"
+      repeatMode = RepeatMode.Reverse,
+    ),
+    label = "a2",
   )
   val alpha3 by infiniteTransition.animateFloat(
-    initialValue = 0.5f, targetValue = 1f,
+    initialValue = 0.5f,
+    targetValue = 1f,
     animationSpec = infiniteRepeatable(
       animation = tween(350, easing = LinearEasing),
-      repeatMode = RepeatMode.Reverse
-    ), label = "a3"
+      repeatMode = RepeatMode.Reverse,
+    ),
+    label = "a3",
   )
-  
+
   val color = when {
     isSpeaking -> MaterialTheme.colorScheme.primary
     isListening -> MaterialTheme.colorScheme.tertiary
     else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
   }
-  
+
   Row(
     modifier = modifier
       .fillMaxWidth()
       .padding(horizontal = 8.dp),
     horizontalArrangement = Arrangement.Center,
-    verticalAlignment = Alignment.CenterVertically
+    verticalAlignment = Alignment.CenterVertically,
   ) {
     val barHeights = if (isListening || isSpeaking) {
       listOf(alpha1, alpha2, alpha3, alpha2, alpha1)
     } else {
       listOf(0.3f, 0.3f, 0.3f, 0.3f, 0.3f)
     }
-    
+
     barHeights.forEach { alpha ->
       Box(
         modifier = Modifier
@@ -805,8 +816,8 @@ fun RealtimeWaveform(
           .height((20 * alpha).dp)
           .background(
             color = color.copy(alpha = alpha),
-            shape = RoundedCornerShape(2.dp)
-          )
+            shape = RoundedCornerShape(2.dp),
+          ),
       )
       Spacer(modifier = Modifier.width(2.dp))
     }

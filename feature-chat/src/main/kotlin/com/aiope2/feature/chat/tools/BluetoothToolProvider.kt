@@ -19,18 +19,16 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Supports scanning, pairing, connecting, and basic BLE operations.
  */
 class BluetoothToolProvider(private val ctx: Context) {
-  private val TAG = "BluetoothTool"
+  private val tag = "BluetoothTool"
   private val btManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
   private val btAdapter = btManager?.adapter
 
-  fun hasPermission(): Boolean {
-    return if (Build.VERSION.SDK_INT >= 31) {
-      ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+  fun hasPermission(): Boolean = if (Build.VERSION.SDK_INT >= 31) {
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
       ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-    } else {
-      ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
+  } else {
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
       ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
-    }
   }
 
   /** Scan for nearby Bluetooth devices */
@@ -42,7 +40,7 @@ class BluetoothToolProvider(private val ctx: Context) {
     return try {
       val devices = mutableMapOf<String, String>() // address -> info
       val deferred = CompletableDeferred<String>()
-      
+
       val scanner = btAdapter.bluetoothLeScanner
       if (scanner != null) {
         val callback = object : ScanCallback() {
@@ -56,21 +54,21 @@ class BluetoothToolProvider(private val ctx: Context) {
               BluetoothDevice.DEVICE_TYPE_DUAL -> "Dual"
               else -> "Unknown"
             }
-            devices[device.address] = "$name (${device.address}) [${type}] RSSI:${rssi}dBm"
+            devices[device.address] = "$name (${device.address}) [$type] RSSI:${rssi}dBm"
           }
-          
+
           override fun onScanFailed(errorCode: Int) {
             deferred.complete("Scan failed with error code: $errorCode")
           }
         }
-        
+
         scanner.startScan(callback)
         Thread.sleep(durationMs)
         scanner.stopScan(callback)
-        
+
         // Also get paired devices
         val paired = btAdapter.bondedDevices ?: emptySet()
-        
+
         buildString {
           appendLine("=== Paired Devices ===")
           if (paired.isEmpty()) {
@@ -81,7 +79,7 @@ class BluetoothToolProvider(private val ctx: Context) {
               appendLine("- $name (${d.address}) [bonded]")
             }
           }
-          
+
           appendLine()
           appendLine("=== Nearby Devices (${devices.size} found) ===")
           if (devices.isEmpty()) {

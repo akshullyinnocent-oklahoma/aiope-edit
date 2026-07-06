@@ -5,13 +5,13 @@ import com.aiope2.core.model.RemoteToolBridge
 import com.aiope2.core.network.ModelTask
 import com.aiope2.core.network.ProviderProfile
 import com.aiope2.core.network.TaskModelStore
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import com.aiope2.feature.chat.LocationData
 import com.aiope2.feature.chat.db.ChatDao
 import com.aiope2.feature.chat.location.LocationProvider
 import com.aiope2.feature.chat.settings.McpManager
 import com.aiope2.feature.chat.settings.ProviderStore
 import com.aiope2.feature.chat.settings.ToolStore
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 class ToolExecutor(
   private val app: Application,
@@ -92,7 +92,9 @@ class ToolExecutor(
       // Auto-discover on first use (cache is in-memory, lost on restart)
       try {
         mcpManager.discoverTools(server)
-      } catch (e: Exception) { android.util.Log.w("ToolExec", "op failed: ${e.message}") }
+      } catch (e: Exception) {
+        android.util.Log.w("ToolExec", "op failed: ${e.message}")
+      }
       defs = mcpManager.getToolDefs(server.id)
     }
     defs
@@ -112,7 +114,8 @@ class ToolExecutor(
       val list = (0 until cats.length()).map { cats.getString(it) }.filter { it != "search_web" && it != "image_search" }.joinToString(", ")
       cachedDataCategories = list
       list
-    } catch (e: Exception) { android.util.Log.w("ToolExec", "op failed: ${e.message}")
+    } catch (e: Exception) {
+      android.util.Log.w("ToolExec", "op failed: ${e.message}")
       "air_quality, alerts, apod, asteroids, astronauts, cat, cat_breed, cat_breeds, cme, earth_events, earth_image, earthquakes, earthquakes_significant, epic, fires, geomagnetic, impact_risk, ip_location, iss, nasa_media, nasa_tech, ocean_temp, solar, solar_flares, sunrise_sunset, tides, time, uv, weather, weather_hourly"
     }
   }
@@ -494,7 +497,7 @@ class ToolExecutor(
 
       "ssh_start", "ssh_exec", "ssh_exit" -> {
         val rtp = remoteToolBridge ?: return@execute "Remote tools not available. feature-remote not initialized."
-         rtp.execute(name, args)
+        rtp.execute(name, args)
       }
 
       else -> mcpManager.executeTool(name, args) ?: "Unknown tool: $name"
@@ -550,7 +553,9 @@ class ToolExecutor(
       .build()
     val body = try {
       httpClient.newCall(req).execute().use { if (it.isSuccessful) it.body?.string() ?: "" else "" }
-    } catch (_: Exception) { "" }
+    } catch (_: Exception) {
+      ""
+    }
     if (body.isBlank()) return ddgFallback(query, categories)
     val json = org.json.JSONObject(body)
     val results = json.optJSONArray("results") ?: return ddgFallback(query, categories)
@@ -575,7 +580,9 @@ class ToolExecutor(
       .build()
     val html = try {
       httpClient.newCall(req).execute().use { it.body?.string() ?: "" }
-    } catch (_: Exception) { return "Error: search unavailable" }
+    } catch (_: Exception) {
+      return "Error: search unavailable"
+    }
     val pattern = Regex("""<a rel="nofollow" class="result__a" href="[^"]*uddg=([^&"]+)[^"]*">(.+?)</a>""")
     val snippetPattern = Regex("""<a class="result__snippet"[^>]*>(.+?)</a>""")
     val links = pattern.findAll(html).take(10).toList()
@@ -593,19 +600,23 @@ class ToolExecutor(
 
   private suspend fun executeSearchWeb(query: String): String = try {
     searxQuery(query)
-  } catch (e: Exception) { "Error: ${e.message}" }
+  } catch (e: Exception) {
+    "Error: ${e.message}"
+  }
 
   private suspend fun executeSearchImages(query: String): String = try {
     searxQuery(query, "images")
-  } catch (e: Exception) { "Error: ${e.message}" }
+  } catch (e: Exception) {
+    "Error: ${e.message}"
+  }
 
   private suspend fun executeQueryData(args: Map<String, Any?>): String = try {
     val cat = args["category"]?.toString() ?: ""
     val extra = args["extra"]?.toString() ?: ""
     val needsLoc = cat in setOf("weather", "weather_hourly", "alerts", "air_quality", "uv", "solar", "sunrise_sunset", "time")
     val (lat, lon) = if (needsLoc) {
-      val loc = lastLocationData ?:
-        locationProvider.getLastLocation()?.let { l ->
+      val loc = lastLocationData
+        ?: locationProvider.getLastLocation()?.let { l ->
           lastLocationData = LocationData(l.latitude, l.longitude, null, null, null, l.accuracy.toDouble())
           lastLocationData
         }
@@ -743,7 +754,8 @@ class ToolExecutor(
       } else {
         searchPlaces(query)
       }
-    } catch (e: Exception) { android.util.Log.w("ToolExec", "op failed: ${e.message}")
+    } catch (e: Exception) {
+      android.util.Log.w("ToolExec", "op failed: ${e.message}")
       try {
         searchPlaces(query)
       } catch (e: Exception) {
@@ -779,7 +791,9 @@ class ToolExecutor(
         val body = json.optJSONObject("data")?.toString() ?: raw
         if (body.contains("features")) return parseGeoapifyResults(body, query)
       }
-    } catch (e: Exception) { android.util.Log.w("ToolExec", "op failed: ${e.message}") }
+    } catch (e: Exception) {
+      android.util.Log.w("ToolExec", "op failed: ${e.message}")
+    }
     val apiKey = providerStore.getGeoapifyKey()
     if (apiKey.isBlank()) return "Place search unavailable. Configure location search on the gateway or set a Geoapify key in Settings."
     val conn = httpClient.newCall(okhttp3.Request.Builder().url("https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lng,$lat,5000&bias=proximity:$lng,$lat&limit=5&name=$encoded&apiKey=$apiKey").build()).execute()
@@ -824,7 +838,8 @@ class ToolExecutor(
     val imgs = mutableListOf<String>()
     extractImageUrls(org.json.JSONTokener(json).nextValue(), imgs)
     if (imgs.isNotEmpty()) imgs.distinct().take(20).joinToString("\n") + "\n\n" + json else json
-  } catch (e: Exception) { android.util.Log.w("ToolExec", "op failed: ${e.message}")
+  } catch (e: Exception) {
+    android.util.Log.w("ToolExec", "op failed: ${e.message}")
     json
   }
 
@@ -845,7 +860,8 @@ class ToolExecutor(
   private fun parseTime(s: String): Long = try {
     val fmts = listOf("yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "MM/dd/yyyy HH:mm", "MMM d yyyy h:mm a", "h:mm a")
     fmts.firstNotNullOfOrNull { fmt -> runCatching { java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(s)?.time }.getOrNull() } ?: s.toLong()
-  } catch (e: Exception) { android.util.Log.w("ToolExec", "op failed: ${e.message}")
+  } catch (e: Exception) {
+    android.util.Log.w("ToolExec", "op failed: ${e.message}")
     System.currentTimeMillis() + 3600000
   }
 

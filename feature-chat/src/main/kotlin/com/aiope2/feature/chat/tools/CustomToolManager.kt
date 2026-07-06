@@ -16,12 +16,12 @@ import java.util.UUID
  * Custom tools are injected into the Agent X system prompt.
  */
 class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
-  private val TAG = "CustomToolManager"
+  private val tag = "CustomToolManager"
   private val toolsDir = File(ctx.filesDir, "custom_tools")
 
   data class CustomTool(
     val id: String,
-    val name: String,        // Tool name (snake_case)
+    val name: String, // Tool name (snake_case)
     val description: String, // Description for AI
     val parameters: Map<String, ParamDef>, // Parameter definitions
     val implementation: String, // Kotlin code or shell command
@@ -48,9 +48,12 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
       put("id", id)
       put("name", name)
       put("description", description)
-      put("parameters", JSONObject().apply {
-        parameters.forEach { (k, v) -> put(k, v.toJson()) }
-      })
+      put(
+        "parameters",
+        JSONObject().apply {
+          parameters.forEach { (k, v) -> put(k, v.toJson()) }
+        },
+      )
       put("implementation", implementation)
       put("implementationType", implementationType.name)
       put("enabled", enabled)
@@ -85,7 +88,9 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
         implementation = j.optString("implementation", ""),
         implementationType = try {
           ImplType.valueOf(j.optString("implementationType", "SHELL"))
-        } catch (_: Exception) { ImplType.SHELL },
+        } catch (_: Exception) {
+          ImplType.SHELL
+        },
         enabled = j.optBoolean("enabled", true),
         dangerous = j.optBoolean("dangerous", false),
         createdAt = j.optLong("createdAt", System.currentTimeMillis()),
@@ -98,17 +103,19 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
   }
 
   /** Get all custom tools */
-  fun getTools(): List<CustomTool> {
-    return try {
-      val json = runBlocking(Dispatchers.IO) { dao.getSetting("custom_tools") } ?: "[]"
-      val arr = JSONArray(json)
-      (0 until arr.length()).mapNotNull {
-        try { CustomTool.fromJson(arr.getJSONObject(it)) } catch (_: Exception) { null }
+  fun getTools(): List<CustomTool> = try {
+    val json = runBlocking(Dispatchers.IO) { dao.getSetting("custom_tools") } ?: "[]"
+    val arr = JSONArray(json)
+    (0 until arr.length()).mapNotNull {
+      try {
+        CustomTool.fromJson(arr.getJSONObject(it))
+      } catch (_: Exception) {
+        null
       }
-    } catch (e: Exception) {
-      Log.e(TAG, "Failed to load custom tools", e)
-      emptyList()
     }
+  } catch (e: Exception) {
+    Log.e(TAG, "Failed to load custom tools", e)
+    emptyList()
   }
 
   /** Get enabled tools */
@@ -119,7 +126,7 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
     val tools = getTools().toMutableList()
     tools.add(tool)
     saveTools(tools)
-    
+
     // Save implementation to file if it's Kotlin code
     if (tool.implementationType == CustomTool.ImplType.KOTLIN) {
       File(toolsDir, "${tool.name}.kt").writeText(tool.implementation)
@@ -156,13 +163,11 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
   }
 
   /** Execute a custom tool */
-  fun execute(tool: CustomTool, args: Map<String, Any?>): String {
-    return when (tool.implementationType) {
-      CustomTool.ImplType.SHELL -> executeShell(tool, args)
-      CustomTool.ImplType.PROOT -> executeProot(tool, args)
-      CustomTool.ImplType.INTENT -> executeIntent(tool, args)
-      CustomTool.ImplType.KOTLIN -> "Kotlin execution requires compilation"
-    }
+  fun execute(tool: CustomTool, args: Map<String, Any?>): String = when (tool.implementationType) {
+    CustomTool.ImplType.SHELL -> executeShell(tool, args)
+    CustomTool.ImplType.PROOT -> executeProot(tool, args)
+    CustomTool.ImplType.INTENT -> executeIntent(tool, args)
+    CustomTool.ImplType.KOTLIN -> "Kotlin execution requires compilation"
   }
 
   private fun executeShell(tool: CustomTool, args: Map<String, Any?>): String {
@@ -176,7 +181,9 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
       val err = proc.errorStream.bufferedReader().readText()
       proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
       output.ifBlank { err }
-    } catch (e: Exception) { "Error: ${e.message}" }
+    } catch (e: Exception) {
+      "Error: ${e.message}"
+    }
   }
 
   private fun executeProot(tool: CustomTool, args: Map<String, Any?>): String {
@@ -187,27 +194,25 @@ class CustomToolManager(private val ctx: Context, private val dao: ChatDao) {
     return com.aiope2.core.terminal.shell.ProotExecutor.exec(ctx, cmd)
   }
 
-  private fun executeIntent(tool: CustomTool, args: Map<String, Any?>): String {
-    return try {
-      val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-        val uri = tool.implementation.replace("{query}", args["query"]?.toString() ?: "")
-        data = android.net.Uri.parse(uri)
-        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-      }
-      ctx.startActivity(intent)
-      "Intent launched"
-    } catch (e: Exception) { "Error: ${e.message}" }
+  private fun executeIntent(tool: CustomTool, args: Map<String, Any?>): String = try {
+    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+      val uri = tool.implementation.replace("{query}", args["query"]?.toString() ?: "")
+      data = android.net.Uri.parse(uri)
+      addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    ctx.startActivity(intent)
+    "Intent launched"
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   /** Build tool definitions for system prompt */
-  fun buildToolDefs(): List<com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef> {
-    return getEnabledTools().map { tool ->
-      com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef(
-        name = tool.name,
-        description = tool.description,
-        parameters = JSONObject(tool.toToolDef()),
-      )
-    }
+  fun buildToolDefs(): List<com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef> = getEnabledTools().map { tool ->
+    com.aiope2.feature.chat.engine.StreamingOrchestrator.ToolDef(
+      name = tool.name,
+      description = tool.description,
+      parameters = JSONObject(tool.toToolDef()),
+    )
   }
 
   /** Build system context */

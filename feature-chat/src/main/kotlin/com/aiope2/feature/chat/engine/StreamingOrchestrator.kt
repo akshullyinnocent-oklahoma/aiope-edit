@@ -435,20 +435,28 @@ class StreamingOrchestrator(
           }
           send(ChatStreamChunk(toolCalls = callInfos))
           val results = callInfos.map { call ->
-            val result = try { onToolCall(call.name, call.arguments) } catch (e: Exception) { "Error: ${e.message}" }
+            val result = try {
+              onToolCall(call.name, call.arguments)
+            } catch (e: Exception) {
+              "Error: ${e.message}"
+            }
             ToolResultInfo(id = call.id, name = call.name, arguments = call.arguments, result = result)
           }
           send(ChatStreamChunk(toolResults = results))
-          rawMessages.add(JSONObject().apply {
-            put("role", "assistant")
-            put("content", text)
-          })
+          rawMessages.add(
+            JSONObject().apply {
+              put("role", "assistant")
+              put("content", text)
+            },
+          )
           for (r in results) {
-            rawMessages.add(JSONObject().apply {
-              put("role", "tool")
-              put("tool_call_id", r.id)
-              put("content", r.result.take(16000))
-            })
+            rawMessages.add(
+              JSONObject().apply {
+                put("role", "tool")
+                put("tool_call_id", r.id)
+                put("content", r.result.take(16000))
+              },
+            )
           }
           contentSoFar.clear()
           continue

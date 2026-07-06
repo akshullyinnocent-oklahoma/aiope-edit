@@ -50,8 +50,14 @@ class AgentExecutor(
   )
 
   private val readOnlyTools = setOf(
-    "search_web", "search_images", "search_location", "fetch_url",
-    "read_file", "list_directory", "query_data", "memory_recall",
+    "search_web",
+    "search_images",
+    "search_location",
+    "fetch_url",
+    "read_file",
+    "list_directory",
+    "query_data",
+    "memory_recall",
   )
 
   /**
@@ -82,7 +88,7 @@ class AgentExecutor(
         prompt = prompt,
         status = "running",
         conversationId = conversationId,
-      )
+      ),
     )
 
     return try {
@@ -130,9 +136,7 @@ class AgentExecutor(
   }
 
   /** Legacy compat — run with no agent name (uses read-only tools) */
-  suspend fun runBlocking(description: String, prompt: String): String {
-    return runAgent("default", prompt)
-  }
+  suspend fun runBlocking(description: String, prompt: String): String = runAgent("default", prompt)
 
   fun clear() {
     _tasks.value = emptyList()

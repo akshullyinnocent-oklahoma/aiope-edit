@@ -1,14 +1,14 @@
 package com.aiope2.feature.chat.tools
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.telephony.TelephonyManager
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
-import android.Manifest
-import android.content.pm.PackageManager
 
 /**
  * Phone call and telephony tools for AIOPE.
@@ -17,45 +17,39 @@ import android.content.pm.PackageManager
 class PhoneToolProvider(private val ctx: Context) {
   private val telephony = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
 
-  fun hasPhonePermission(): Boolean {
-    return ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
-           ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-  }
+  fun hasPhonePermission(): Boolean = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
 
   /** Initiate a phone call */
-  fun makeCall(phoneNumber: String): String {
-    return try {
-      val intent = Intent(Intent.ACTION_CALL).apply {
-        data = Uri.parse("tel:${phoneNumber.replace(" ", "").replace("-", "")}")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      }
-      ctx.startActivity(intent)
-      "Dialing $phoneNumber..."
-    } catch (e: SecurityException) {
-      "Error: CALL_PHONE permission required."
-    } catch (e: Exception) {
-      "Error: ${e.message}"
+  fun makeCall(phoneNumber: String): String = try {
+    val intent = Intent(Intent.ACTION_CALL).apply {
+      data = Uri.parse("tel:${phoneNumber.replace(" ", "").replace("-", "")}")
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
+    ctx.startActivity(intent)
+    "Dialing $phoneNumber..."
+  } catch (e: SecurityException) {
+    "Error: CALL_PHONE permission required."
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   /** Open dialer with number (no direct call) */
-  fun openDialer(phoneNumber: String): String {
-    return try {
-      val intent = Intent(Intent.ACTION_DIAL).apply {
-        data = Uri.parse("tel:${phoneNumber.replace(" ", "").replace("-", "")}")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      }
-      ctx.startActivity(intent)
-      "Dialer opened with $phoneNumber"
-    } catch (e: Exception) {
-      "Error: ${e.message}"
+  fun openDialer(phoneNumber: String): String = try {
+    val intent = Intent(Intent.ACTION_DIAL).apply {
+      data = Uri.parse("tel:${phoneNumber.replace(" ", "").replace("-", "")}")
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
+    ctx.startActivity(intent)
+    "Dialer opened with $phoneNumber"
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   /** Get phone/SIM information */
   fun getPhoneInfo(): String {
     if (telephony == null) return "Telephony not available."
-    
+
     return try {
       buildString {
         appendLine("=== Phone Information ===")
@@ -69,12 +63,12 @@ class PhoneToolProvider(private val ctx: Context) {
         appendLine("Roaming: ${telephony.isNetworkRoaming}")
         appendLine("Data activity: ${dataActivityName(telephony.dataActivity)}")
         appendLine("Data state: ${dataStateName(telephony.dataState)}")
-        
+
         if (Build.VERSION.SDK_INT >= 24) {
           appendLine("Voice network type: ${networkTypeName(telephony.voiceNetworkType)}")
           appendLine("Data network type: ${networkTypeName(telephony.dataNetworkType)}")
         }
-        
+
         // Multi-SIM info
         if (Build.VERSION.SDK_INT >= 24) {
           try {
@@ -102,57 +96,53 @@ class PhoneToolProvider(private val ctx: Context) {
   }
 
   /** Get current network signal strength info */
-  fun getSignalStrength(): String {
-    return try {
-      buildString {
-        appendLine("=== Signal Strength ===")
-        if (Build.VERSION.SDK_INT >= 28) {
-          val signalStrength = telephony?.signalStrength
-          if (signalStrength != null) {
-            if (Build.VERSION.SDK_INT >= 29) {
-              val cellSignal = signalStrength.cellSignalStrengths
-              cellSignal.forEach { cell ->
-                appendLine("- Type: ${cell.javaClass.simpleName}")
-                appendLine("  Level: ${cell.level}/4")
-                appendLine("  dBm: ${cell.dbm}")
-                if (Build.VERSION.SDK_INT >= 30) {
-                  appendLine("  ASU: ${cell.asuLevel}")
-                }
+  fun getSignalStrength(): String = try {
+    buildString {
+      appendLine("=== Signal Strength ===")
+      if (Build.VERSION.SDK_INT >= 28) {
+        val signalStrength = telephony?.signalStrength
+        if (signalStrength != null) {
+          if (Build.VERSION.SDK_INT >= 29) {
+            val cellSignal = signalStrength.cellSignalStrengths
+            cellSignal.forEach { cell ->
+              appendLine("- Type: ${cell.javaClass.simpleName}")
+              appendLine("  Level: ${cell.level}/4")
+              appendLine("  dBm: ${cell.dbm}")
+              if (Build.VERSION.SDK_INT >= 30) {
+                appendLine("  ASU: ${cell.asuLevel}")
               }
-            } else {
-              @Suppress("DEPRECATION")
-              appendLine("GSM: ${signalStrength.gsmSignalStrength}")
-              @Suppress("DEPRECATION")
-              appendLine("CDMA dBm: ${signalStrength.cdmaDbm}")
-              @Suppress("DEPRECATION")
-              appendLine("EVDO dBm: ${signalStrength.evdoDbm}")
-              appendLine("Level: ${signalStrength.level}/4")
             }
           } else {
-            appendLine("Signal strength unavailable")
+            @Suppress("DEPRECATION")
+            appendLine("GSM: ${signalStrength.gsmSignalStrength}")
+            @Suppress("DEPRECATION")
+            appendLine("CDMA dBm: ${signalStrength.cdmaDbm}")
+            @Suppress("DEPRECATION")
+            appendLine("EVDO dBm: ${signalStrength.evdoDbm}")
+            appendLine("Level: ${signalStrength.level}/4")
           }
         } else {
-          appendLine("Requires Android 9+")
+          appendLine("Signal strength unavailable")
         }
+      } else {
+        appendLine("Requires Android 9+")
       }
-    } catch (e: Exception) {
-      "Error: ${e.message}"
     }
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   /** Check if device is on a call */
-  fun getCallState(): String {
-    return try {
-      val state = telephony?.callState ?: TelephonyManager.CALL_STATE_IDLE
-      when (state) {
-        TelephonyManager.CALL_STATE_IDLE -> "No active call"
-        TelephonyManager.CALL_STATE_RINGING -> "Incoming call"
-        TelephonyManager.CALL_STATE_OFFHOOK -> "Active call"
-        else -> "Unknown state: $state"
-      }
-    } catch (e: Exception) {
-      "Error: ${e.message}"
+  fun getCallState(): String = try {
+    val state = telephony?.callState ?: TelephonyManager.CALL_STATE_IDLE
+    when (state) {
+      TelephonyManager.CALL_STATE_IDLE -> "No active call"
+      TelephonyManager.CALL_STATE_RINGING -> "Incoming call"
+      TelephonyManager.CALL_STATE_OFFHOOK -> "Active call"
+      else -> "Unknown state: $state"
     }
+  } catch (e: Exception) {
+    "Error: ${e.message}"
   }
 
   private fun networkTypeName(type: Int): String = when (type) {

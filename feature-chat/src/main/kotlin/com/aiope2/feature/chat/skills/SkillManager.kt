@@ -16,9 +16,9 @@ import java.util.UUID
  * Skills follow the standard skill.md format with frontmatter metadata.
  */
 class SkillManager(private val ctx: Context, private val dao: ChatDao) {
-  private val TAG = "SkillManager"
+  private val tag = "SkillManager"
   private val skillsDir = File(ctx.filesDir, "skills")
-  
+
   data class Skill(
     val id: String,
     val name: String,
@@ -47,7 +47,7 @@ class SkillManager(private val ctx: Context, private val dao: ChatDao) {
       appendLine()
       append(content)
     }
-    
+
     fun toJson(): JSONObject = JSONObject().apply {
       put("id", id)
       put("name", name)
@@ -63,7 +63,7 @@ class SkillManager(private val ctx: Context, private val dao: ChatDao) {
       put("createdAt", createdAt)
       put("updatedAt", updatedAt)
     }
-    
+
     companion object {
       fun fromJson(j: JSONObject): Skill = Skill(
         id = j.getString("id"),
@@ -80,35 +80,33 @@ class SkillManager(private val ctx: Context, private val dao: ChatDao) {
         createdAt = j.optLong("createdAt", System.currentTimeMillis()),
         updatedAt = j.optLong("updatedAt", System.currentTimeMillis()),
       )
-      
-      fun fromMarkdown(markdown: String): Skill? {
-        return try {
-          val frontmatter = markdown.substringAfter("---").substringBefore("---").trim()
-          val content = markdown.substringAfterLast("---").trim()
-          
-          val meta = mutableMapOf<String, String>()
-          frontmatter.lines().forEach { line ->
-            val colonIdx = line.indexOf(":")
-            if (colonIdx > 0) {
-              meta[line.substring(0, colonIdx).trim()] = line.substring(colonIdx + 1).trim()
-            }
+
+      fun fromMarkdown(markdown: String): Skill? = try {
+        val frontmatter = markdown.substringAfter("---").substringBefore("---").trim()
+        val content = markdown.substringAfterLast("---").trim()
+
+        val meta = mutableMapOf<String, String>()
+        frontmatter.lines().forEach { line ->
+          val colonIdx = line.indexOf(":")
+          if (colonIdx > 0) {
+            meta[line.substring(0, colonIdx).trim()] = line.substring(colonIdx + 1).trim()
           }
-          
-          Skill(
-            id = UUID.randomUUID().toString().take(8),
-            name = meta["name"] ?: "Unnamed Skill",
-            description = meta["description"] ?: "",
-            category = meta["category"] ?: "general",
-            version = meta["version"] ?: "1.0.0",
-            author = meta["author"] ?: "user",
-            content = content,
-            triggers = meta["triggers"]?.split(",")?.map { it.trim() } ?: emptyList(),
-            tools = meta["tools"]?.split(",")?.map { it.trim() } ?: emptyList(),
-          )
-        } catch (e: Exception) {
-          Log.e("SkillManager", "Failed to parse markdown", e)
-          null
         }
+
+        Skill(
+          id = UUID.randomUUID().toString().take(8),
+          name = meta["name"] ?: "Unnamed Skill",
+          description = meta["description"] ?: "",
+          category = meta["category"] ?: "general",
+          version = meta["version"] ?: "1.0.0",
+          author = meta["author"] ?: "user",
+          content = content,
+          triggers = meta["triggers"]?.split(",")?.map { it.trim() } ?: emptyList(),
+          tools = meta["tools"]?.split(",")?.map { it.trim() } ?: emptyList(),
+        )
+      } catch (e: Exception) {
+        Log.e("SkillManager", "Failed to parse markdown", e)
+        null
       }
     }
   }
@@ -283,7 +281,7 @@ Always check:
 """,
       ),
     )
-    
+
     builtins.forEach { skill ->
       val file = File(skillsDir, "${skill.id}.skill.md")
       if (!file.exists()) {
@@ -294,17 +292,19 @@ Always check:
   }
 
   /** Get all skills */
-  fun getSkills(): List<Skill> {
-    return try {
-      val json = dao.getSetting("skills_registry") ?: "[]"
-      val arr = JSONArray(json)
-      (0 until arr.length()).mapNotNull {
-        try { Skill.fromJson(arr.getJSONObject(it)) } catch (_: Exception) { null }
+  fun getSkills(): List<Skill> = try {
+    val json = dao.getSetting("skills_registry") ?: "[]"
+    val arr = JSONArray(json)
+    (0 until arr.length()).mapNotNull {
+      try {
+        Skill.fromJson(arr.getJSONObject(it))
+      } catch (_: Exception) {
+        null
       }
-    } catch (e: Exception) {
-      Log.e(TAG, "Failed to load skills", e)
-      emptyList()
     }
+  } catch (e: Exception) {
+    Log.e(TAG, "Failed to load skills", e)
+    emptyList()
   }
 
   /** Get enabled skills */
@@ -315,14 +315,14 @@ Always check:
     val skills = getSkills().toMutableList()
     val idx = skills.indexOfFirst { it.id == skill.id }
     if (idx >= 0) skills[idx] = skill else skills.add(skill)
-    
+
     val arr = JSONArray()
     skills.forEach { arr.put(it.toJson()) }
-    
+
     kotlinx.coroutines.runBlocking(Dispatchers.IO) {
       dao.upsertSetting(SettingsKvEntity("skills_registry", arr.toString()))
     }
-    
+
     // Also save as .skill.md file
     val file = File(skillsDir, "${skill.id}.skill.md")
     file.writeText(skill.toMarkdown())
@@ -353,13 +353,13 @@ Always check:
   fun deleteSkill(id: String) {
     val skills = getSkills().toMutableList()
     skills.removeAll { it.id == id && !it.builtin }
-    
+
     val arr = JSONArray()
     skills.forEach { arr.put(it.toJson()) }
     kotlinx.coroutines.runBlocking(Dispatchers.IO) {
       dao.upsertSetting(SettingsKvEntity("skills_registry", arr.toString()))
     }
-    
+
     // Delete file
     File(skillsDir, "$id.skill.md").delete()
   }

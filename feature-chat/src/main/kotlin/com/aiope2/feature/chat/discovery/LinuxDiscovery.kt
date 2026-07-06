@@ -13,7 +13,7 @@ import javax.jmdns.ServiceListener
  * Used to find potential gateway hosts or SSH targets.
  */
 class LinuxDiscovery(private val ctx: Context) {
-  private val TAG = "LinuxDiscovery"
+  private val tag = "LinuxDiscovery"
   private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   data class DiscoveredHost(
@@ -25,7 +25,7 @@ class LinuxDiscovery(private val ctx: Context) {
   )
 
   data class DiscoveredService(
-    val type: String,    // "ssh", "http", "https", "smb", "nfs", etc.
+    val type: String, // "ssh", "http", "https", "smb", "nfs", etc.
     val port: Int,
     val name: String,
     val details: String = "",
@@ -34,12 +34,12 @@ class LinuxDiscovery(private val ctx: Context) {
   /** Scan local network for Linux hosts */
   suspend fun scanNetwork(timeoutMs: Long = 30000): List<DiscoveredHost> = withContext(Dispatchers.IO) {
     val hosts = mutableListOf<DiscoveredHost>()
-    
+
     try {
       // Get local network range
       val localIp = getLocalIpAddress() ?: return@withContext emptyList()
       val subnet = localIp.substringBeforeLast(".")
-      
+
       // Scan common ports on each host in subnet
       val jobs = (1..254).map { i ->
         async {
@@ -49,34 +49,35 @@ class LinuxDiscovery(private val ctx: Context) {
             val hostname = resolveHostname(ip)
             val osGuess = guessOS(services)
             DiscoveredHost(ip = ip, hostname = hostname, services = services, osGuess = osGuess)
-          } else null
+          } else {
+            null
+          }
         }
       }
-      
+
       jobs.awaitAll().filterNotNull().let { hosts.addAll(it) }
-      
+
       // Also try mDNS/Bonjour discovery
       try {
         hosts.addAll(discoverViaMdns())
       } catch (e: Exception) {
         Log.w(TAG, "mDNS discovery failed: ${e.message}")
       }
-      
     } catch (e: Exception) {
       Log.e(TAG, "Network scan failed", e)
     }
-    
+
     hosts
   }
 
   /** Quick scan for SSH hosts (common for Linux servers) */
   suspend fun findSshHosts(timeoutMs: Long = 15000): List<DiscoveredHost> = withContext(Dispatchers.IO) {
     val hosts = mutableListOf<DiscoveredHost>()
-    
+
     try {
       val localIp = getLocalIpAddress() ?: return@withContext emptyList()
       val subnet = localIp.substringBeforeLast(".")
-      
+
       val jobs = (1..254).map { i ->
         async {
           val ip = "$subnet.$i"
@@ -88,15 +89,17 @@ class LinuxDiscovery(private val ctx: Context) {
               services = listOf(DiscoveredService("ssh", 22, "SSH")),
               osGuess = "linux",
             )
-          } else null
+          } else {
+            null
+          }
         }
       }
-      
+
       jobs.awaitAll().filterNotNull().let { hosts.addAll(it) }
     } catch (e: Exception) {
       Log.e(TAG, "SSH scan failed", e)
     }
-    
+
     hosts
   }
 
@@ -111,39 +114,39 @@ class LinuxDiscovery(private val ctx: Context) {
       8080 to "http-alt",
       2222 to "ssh-alt", // aiope-remote
     )
-    
+
     return commonPorts.mapNotNull { (port, service) ->
       if (isPortOpen(ip, port, timeoutMs)) {
         DiscoveredService(type = service, port = port, name = service.uppercase())
-      } else null
+      } else {
+        null
+      }
     }
   }
 
   /** Check if a port is open */
-  private fun isPortOpen(ip: String, port: Int, timeoutMs: Long): Boolean {
-    return try {
-      Socket().use { socket ->
-        socket.connect(InetSocketAddress(ip, port), timeoutMs.toInt())
-        true
-      }
-    } catch (_: Exception) { false }
+  private fun isPortOpen(ip: String, port: Int, timeoutMs: Long): Boolean = try {
+    Socket().use { socket ->
+      socket.connect(InetSocketAddress(ip, port), timeoutMs.toInt())
+      true
+    }
+  } catch (_: Exception) {
+    false
   }
 
   /** Resolve hostname from IP */
-  private fun resolveHostname(ip: String): String {
-    return try {
-      InetAddress.getByName(ip).hostName?.takeIf { it != ip } ?: ip
-    } catch (_: Exception) { ip }
+  private fun resolveHostname(ip: String): String = try {
+    InetAddress.getByName(ip).hostName?.takeIf { it != ip } ?: ip
+  } catch (_: Exception) {
+    ip
   }
 
   /** Guess OS from services */
-  private fun guessOS(services: List<DiscoveredService>): String {
-    return when {
-      services.any { it.type == "ssh" } -> "linux/bsd"
-      services.any { it.type == "smb" } -> "windows/linux"
-      services.any { it.type == "nfs" } -> "linux/unix"
-      else -> "unknown"
-    }
+  private fun guessOS(services: List<DiscoveredService>): String = when {
+    services.any { it.type == "ssh" } -> "linux/bsd"
+    services.any { it.type == "smb" } -> "windows/linux"
+    services.any { it.type == "nfs" } -> "linux/unix"
+    else -> "unknown"
   }
 
   /** Discover via mDNS/Bonjour */
@@ -151,22 +154,27 @@ class LinuxDiscovery(private val ctx: Context) {
     val hosts = mutableListOf<DiscoveredHost>()
     try {
       val jmdns = JmDNS.create(InetAddress.getByName(getLocalIpAddress()))
-      
+
       // Listen for SSH services
-      jmdns.addServiceListener("_ssh._tcp.local.", object : ServiceListener {
-        override fun onServiceAdded(event: ServiceEvent) {}
-        override fun onServiceRemoved(event: ServiceEvent) {}
-        override fun onServiceResolved(event: ServiceEvent) {
-          val info = event.info
-          hosts.add(DiscoveredHost(
-            ip = info.inetAddresses.firstOrNull()?.hostAddress ?: "",
-            hostname = info.name,
-            services = listOf(DiscoveredService("ssh", info.port, info.name)),
-            osGuess = "linux",
-          ))
-        }
-      })
-      
+      jmdns.addServiceListener(
+        "_ssh._tcp.local.",
+        object : ServiceListener {
+          override fun onServiceAdded(event: ServiceEvent) {}
+          override fun onServiceRemoved(event: ServiceEvent) {}
+          override fun onServiceResolved(event: ServiceEvent) {
+            val info = event.info
+            hosts.add(
+              DiscoveredHost(
+                ip = info.inetAddresses.firstOrNull()?.hostAddress ?: "",
+                hostname = info.name,
+                services = listOf(DiscoveredService("ssh", info.port, info.name)),
+                osGuess = "linux",
+              ),
+            )
+          }
+        },
+      )
+
       Thread.sleep(5000)
       jmdns.close()
     } catch (e: Exception) {
@@ -176,32 +184,28 @@ class LinuxDiscovery(private val ctx: Context) {
   }
 
   /** Get local IP address */
-  private fun getLocalIpAddress(): String? {
-    return try {
-      NetworkInterface.getNetworkInterfaces().toList()
-        .flatMap { it.inetAddresses.toList() }
-        .filterIsInstance<Inet4Address>()
-        .firstOrNull { !it.isLoopbackAddress }
-        ?.hostAddress
-    } catch (e: Exception) {
-      Log.e(TAG, "Failed to get local IP", e)
-      null
-    }
+  private fun getLocalIpAddress(): String? = try {
+    NetworkInterface.getNetworkInterfaces().toList()
+      .flatMap { it.inetAddresses.toList() }
+      .filterIsInstance<Inet4Address>()
+      .firstOrNull { !it.isLoopbackAddress }
+      ?.hostAddress
+  } catch (e: Exception) {
+    Log.e(TAG, "Failed to get local IP", e)
+    null
   }
 
   /** Build system context */
-  fun buildSystemContext(discoveredHosts: List<DiscoveredHost>): String {
-    return buildString {
-      appendLine("## Network Discovery")
-      if (discoveredHosts.isEmpty()) {
-        appendLine("No hosts discovered yet. Use discover_networks to scan.")
-      } else {
-        appendLine("Discovered ${discoveredHosts.size} host(s):")
-        discoveredHosts.forEach { host ->
-          appendLine("- ${host.hostname} (${host.ip}) [${host.osGuess}]")
-          host.services.forEach { svc ->
-            appendLine("  * ${svc.type}:${svc.port}")
-          )
+  fun buildSystemContext(discoveredHosts: List<DiscoveredHost>): String = buildString {
+    appendLine("## Network Discovery")
+    if (discoveredHosts.isEmpty()) {
+      appendLine("No hosts discovered yet. Use discover_networks to scan.")
+    } else {
+      appendLine("Discovered ${discoveredHosts.size} host(s):")
+      discoveredHosts.forEach { host ->
+        appendLine("- ${host.hostname} (${host.ip}) [${host.osGuess}]")
+        host.services.forEach { svc ->
+          appendLine("  * ${svc.type}:${svc.port}")
         }
       }
     }

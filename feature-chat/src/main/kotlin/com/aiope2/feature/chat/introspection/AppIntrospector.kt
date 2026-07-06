@@ -23,7 +23,7 @@ import java.util.regex.Pattern
  * settings, tools, and environment. Enables crash prediction and prevention.
  */
 class AppIntrospector(private val ctx: Context) {
-  private val TAG = "AppIntrospector"
+  private val tag = "AppIntrospector"
 
   data class AppState(
     val packageName: String,
@@ -85,7 +85,7 @@ class AppIntrospector(private val ctx: Context) {
   fun getAppState(): AppState {
     val pm = ctx.packageManager
     val pkgInfo = pm.getPackageInfo(ctx.packageName, 0)
-    
+
     return AppState(
       packageName = ctx.packageName,
       versionName = pkgInfo.versionName ?: "unknown",
@@ -107,7 +107,7 @@ class AppIntrospector(private val ctx: Context) {
     val runtime = Runtime.getRuntime()
     val debugInfo = Debug.MemoryInfo()
     Debug.getMemoryInfo(debugInfo)
-    
+
     return MemoryInfo(
       javaHeapUsed = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024,
       javaHeapMax = runtime.maxMemory() / 1024 / 1024,
@@ -118,25 +118,25 @@ class AppIntrospector(private val ctx: Context) {
   }
 
   /** Get thread count */
-  private fun getThreadCount(): Int {
-    return Process.myTid().let { tid ->
-      File("/proc/self/task").listFiles()?.size ?: 0
-    }
+  private fun getThreadCount(): Int = Process.myTid().let { tid ->
+    File("/proc/self/task").listFiles()?.size ?: 0
   }
 
   /** Get CPU usage percentage */
-  private fun getCpuUsage(): Double {
-    return try {
-      val pid = Process.myPid()
-      val stat = File("/proc/$pid/stat").readText()
-      val parts = stat.split(" ")
-      if (parts.size > 13) {
-        val utime = parts[13].toLongOrNull() ?: 0
-        val stime = parts[14].toLongOrNull() ?: 0
-        val totalTime = utime + stime
-        totalTime.toDouble() // Simplified - would need clock ticks for percentage
-      } else 0.0
-    } catch (e: Exception) { 0.0 }
+  private fun getCpuUsage(): Double = try {
+    val pid = Process.myPid()
+    val stat = File("/proc/$pid/stat").readText()
+    val parts = stat.split(" ")
+    if (parts.size > 13) {
+      val utime = parts[13].toLongOrNull() ?: 0
+      val stime = parts[14].toLongOrNull() ?: 0
+      val totalTime = utime + stime
+      totalTime.toDouble() // Simplified - would need clock ticks for percentage
+    } else {
+      0.0
+    }
+  } catch (e: Exception) {
+    0.0
   }
 
   /** Get storage usage */
@@ -144,7 +144,7 @@ class AppIntrospector(private val ctx: Context) {
     val dataDir = ctx.filesDir.parentFile
     val cacheDir = ctx.cacheDir
     val externalDir = ctx.getExternalFilesDir(null)
-    
+
     return StorageInfo(
       appSize = getFolderSize(File(dataDir, "app")),
       dataSize = getFolderSize(dataDir),
@@ -159,23 +159,23 @@ class AppIntrospector(private val ctx: Context) {
   }
 
   /** Get granted permissions */
-  private fun getGrantedPermissions(): List<String> {
-    return try {
-      val pm = ctx.packageManager
-      val pkgInfo = if (Build.VERSION.SDK_INT >= 33) {
-        pm.getPackageInfo(ctx.packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()))
-      } else {
-        @Suppress("DEPRECATION")
-        pm.getPackageInfo(ctx.packageName, PackageManager.GET_PERMISSIONS)
-      }
-      
-      val permissions = pkgInfo.requestedPermissions ?: emptyArray()
-      val states = pkgInfo.requestedPermissionsFlags ?: intArrayOf()
-      
-      permissions.filterIndexed { idx, _ ->
-        idx < states.size && (states[idx] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
-      }.toList()
-    } catch (e: Exception) { emptyList() }
+  private fun getGrantedPermissions(): List<String> = try {
+    val pm = ctx.packageManager
+    val pkgInfo = if (Build.VERSION.SDK_INT >= 33) {
+      pm.getPackageInfo(ctx.packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()))
+    } else {
+      @Suppress("DEPRECATION")
+      pm.getPackageInfo(ctx.packageName, PackageManager.GET_PERMISSIONS)
+    }
+
+    val permissions = pkgInfo.requestedPermissions ?: emptyArray()
+    val states = pkgInfo.requestedPermissionsFlags ?: intArrayOf()
+
+    permissions.filterIndexed { idx, _ ->
+      idx < states.size && (states[idx] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+    }.toList()
+  } catch (e: Exception) {
+    emptyList()
   }
 
   /** Get component counts */
@@ -183,18 +183,24 @@ class AppIntrospector(private val ctx: Context) {
     val pm = ctx.packageManager
     return try {
       val pkgInfo = if (Build.VERSION.SDK_INT >= 33) {
-        pm.getPackageInfo(ctx.packageName, PackageManager.PackageInfoFlags.of(
-          (PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or 
-           PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS).toLong()
-        ))
+        pm.getPackageInfo(
+          ctx.packageName,
+          PackageManager.PackageInfoFlags.of(
+            (
+              PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
+                PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+              ).toLong(),
+          ),
+        )
       } else {
         @Suppress("DEPRECATION")
-        pm.getPackageInfo(ctx.packageName, 
-          PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or 
-          PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+        pm.getPackageInfo(
+          ctx.packageName,
+          PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
+            PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS,
         )
       }
-      
+
       ComponentInfo(
         activityCount = pkgInfo.activities?.size ?: 0,
         serviceCount = pkgInfo.services?.size ?: 0,
@@ -207,12 +213,12 @@ class AppIntrospector(private val ctx: Context) {
   }
 
   /** Get running services */
-  private fun getRunningServices(): List<String> {
-    return try {
-      val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-      @Suppress("DEPRECATION")
-      am.getRunningServices(50).map { it.service.className }
-    } catch (e: Exception) { emptyList() }
+  private fun getRunningServices(): List<String> = try {
+    val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+    @Suppress("DEPRECATION")
+    am.getRunningServices(50).map { it.service.className }
+  } catch (e: Exception) {
+    emptyList()
   }
 
   /** Get proot status */
@@ -221,12 +227,16 @@ class AppIntrospector(private val ctx: Context) {
     val active = ProotEnvironmentManager.getActiveEnvironment(ctx)
     return ProotStatus(
       isInstalled = ProotEnvironmentManager.isEnvironmentInstalled(
-        active ?: ProotEnvironmentManager.DistroRegistry.getDefault().let { 
-        ProotEnvironmentManager.ProotEnvironment(
-          id = "default", name = "default", distro = "alpine", version = "3.21",
-          installPath = ProotEnvironmentManager.getRootfsDir(ctx).absolutePath
-        )
-      }),
+        active ?: ProotEnvironmentManager.DistroRegistry.getDefault().let {
+          ProotEnvironmentManager.ProotEnvironment(
+            id = "default",
+            name = "default",
+            distro = "alpine",
+            version = "3.21",
+            installPath = ProotEnvironmentManager.getRootfsDir(ctx).absolutePath,
+          )
+        },
+      ),
       activeEnvironment = active?.name ?: "none",
       environmentCount = envs.size,
     )
@@ -253,56 +263,66 @@ class AppIntrospector(private val ctx: Context) {
   fun predictIssues(): List<PredictedIssue> {
     val issues = mutableListOf<PredictedIssue>()
     val state = getAppState()
-    
+
     // Memory pressure
     val memoryRatio = state.memoryUsage.javaHeapUsed.toDouble() / state.memoryUsage.javaHeapMax
     if (memoryRatio > 0.85) {
-      issues.add(PredictedIssue(
-        severity = PredictedIssue.Severity.HIGH,
-        component = "Memory",
-        description = "Heap usage at ${(memoryRatio * 100).toInt()}%. Risk of OutOfMemoryError.",
-        suggestion = "Trigger garbage collection or reduce cache sizes.",
-      ))
+      issues.add(
+        PredictedIssue(
+          severity = PredictedIssue.Severity.HIGH,
+          component = "Memory",
+          description = "Heap usage at ${(memoryRatio * 100).toInt()}%. Risk of OutOfMemoryError.",
+          suggestion = "Trigger garbage collection or reduce cache sizes.",
+        ),
+      )
     } else if (memoryRatio > 0.7) {
-      issues.add(PredictedIssue(
-        severity = PredictedIssue.Severity.MEDIUM,
-        component = "Memory",
-        description = "Heap usage at ${(memoryRatio * 100).toInt()}%. Monitor closely.",
-        suggestion = "Consider clearing caches if usage continues to rise.",
-      ))
+      issues.add(
+        PredictedIssue(
+          severity = PredictedIssue.Severity.MEDIUM,
+          component = "Memory",
+          description = "Heap usage at ${(memoryRatio * 100).toInt()}%. Monitor closely.",
+          suggestion = "Consider clearing caches if usage continues to rise.",
+        ),
+      )
     }
-    
+
     // Thread count
     if (state.threadCount > 100) {
-      issues.add(PredictedIssue(
-        severity = PredictedIssue.Severity.MEDIUM,
-        component = "Threads",
-        description = "Thread count (${state.threadCount}) is high.",
-        suggestion = "Check for thread leaks in network operations.",
-      ))
+      issues.add(
+        PredictedIssue(
+          severity = PredictedIssue.Severity.MEDIUM,
+          component = "Threads",
+          description = "Thread count (${state.threadCount}) is high.",
+          suggestion = "Check for thread leaks in network operations.",
+        ),
+      )
     }
-    
+
     // Storage
     val totalStorage = state.storageUsage.dataSize + state.storageUsage.cacheSize
     if (totalStorage > 500 * 1024 * 1024) { // 500MB
-      issues.add(PredictedIssue(
-        severity = PredictedIssue.Severity.LOW,
-        component = "Storage",
-        description = "App using ${totalStorage / 1024 / 1024}MB of storage.",
-        suggestion = "Consider clearing cache or old files.",
-      ))
+      issues.add(
+        PredictedIssue(
+          severity = PredictedIssue.Severity.LOW,
+          component = "Storage",
+          description = "App using ${totalStorage / 1024 / 1024}MB of storage.",
+          suggestion = "Consider clearing cache or old files.",
+        ),
+      )
     }
-    
+
     // Proot check
     if (state.prootStatus.isInstalled && state.prootStatus.environmentCount == 0) {
-      issues.add(PredictedIssue(
-        severity = PredictedIssue.Severity.LOW,
-        component = "Proot",
-        description = "Proot installed but no environments configured.",
-        suggestion = "Create a proot environment in Settings.",
-      ))
+      issues.add(
+        PredictedIssue(
+          severity = PredictedIssue.Severity.LOW,
+          component = "Proot",
+          description = "Proot installed but no environments configured.",
+          suggestion = "Create a proot environment in Settings.",
+        ),
+      )
     }
-    
+
     return issues
   }
 
@@ -323,7 +343,7 @@ class AppIntrospector(private val ctx: Context) {
     val state = getAppState()
     val issues = predictIssues()
     val privilegeStatus = RootDetector.detect(ctx)
-    
+
     return buildString {
       appendLine("## AIOPE Self-Awareness Context")
       appendLine()
@@ -333,20 +353,20 @@ class AppIntrospector(private val ctx: Context) {
       appendLine("- Memory: ${state.memoryUsage.javaHeapUsed}MB / ${state.memoryUsage.javaHeapMax}MB heap, ${state.memoryUsage.totalPss}MB PSS")
       appendLine("- Threads: ${state.threadCount}")
       appendLine("- Components: ${state.components.activityCount} activities, ${state.components.serviceCount} services, ${state.components.receiverCount} receivers, ${state.components.providerCount} providers")
-      
+
       appendLine()
       appendLine("### Privilege Level")
       appendLine("- Level: ${privilegeStatus.level.name}")
       appendLine("- Shizuku: ${if (privilegeStatus.shizukuVersion > 0) "v${privilegeStatus.shizukuVersion}" else "not available"}")
       appendLine("- Magisk: ${if (privilegeStatus.magiskInstalled) "v${privilegeStatus.magiskVersion}" else "not detected"}")
       appendLine("- Secure Settings: ${privilegeStatus.canWriteSecureSettings}")
-      
+
       appendLine()
       appendLine("### Proot Environment")
       appendLine("- Installed: ${state.prootStatus.isInstalled}")
       appendLine("- Active: ${state.prootStatus.activeEnvironment}")
       appendLine("- Environments: ${state.prootStatus.environmentCount}")
-      
+
       appendLine()
       appendLine("### Device Capabilities")
       appendLine("- Model: ${Build.MANUFACTURER} ${Build.MODEL}")
@@ -356,7 +376,7 @@ class AppIntrospector(private val ctx: Context) {
       appendLine("- NFC: ${state.deviceCapabilities.hasNfc}")
       appendLine("- GPS: ${state.deviceCapabilities.hasGps}")
       appendLine("- Telephony: ${state.deviceCapabilities.hasTelephony}")
-      
+
       // Plugins
       pluginManager?.let { pm ->
         val plugins = pm.getEnabledPlugins()
@@ -368,7 +388,7 @@ class AppIntrospector(private val ctx: Context) {
           }
         }
       }
-      
+
       // Skills
       skillManager?.let { sm ->
         val skills = sm.getEnabledSkills()
@@ -380,7 +400,7 @@ class AppIntrospector(private val ctx: Context) {
           }
         }
       }
-      
+
       // Predicted issues
       if (issues.isNotEmpty()) {
         appendLine()

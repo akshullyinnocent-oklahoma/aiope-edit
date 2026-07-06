@@ -14,21 +14,21 @@ object TermuxBridge {
   private const val TAG = "TermuxBridge"
   private const val TERMUX_PACKAGE = "com.termux"
   private const val TERMUX_API_PACKAGE = "com.termux.api"
-  
+
   /** Check if Termux is installed */
-  fun isTermuxInstalled(ctx: Context): Boolean {
-    return try {
-      ctx.packageManager.getPackageInfo(TERMUX_PACKAGE, 0)
-      true
-    } catch (_: Exception) { false }
+  fun isTermuxInstalled(ctx: Context): Boolean = try {
+    ctx.packageManager.getPackageInfo(TERMUX_PACKAGE, 0)
+    true
+  } catch (_: Exception) {
+    false
   }
 
   /** Check if Termux:API is installed */
-  fun isTermuxApiInstalled(ctx: Context): Boolean {
-    return try {
-      ctx.packageManager.getPackageInfo(TERMUX_API_PACKAGE, 0)
-      true
-    } catch (_: Exception) { false }
+  fun isTermuxApiInstalled(ctx: Context): Boolean = try {
+    ctx.packageManager.getPackageInfo(TERMUX_API_PACKAGE, 0)
+    true
+  } catch (_: Exception) {
+    false
   }
 
   /** Launch Termux app */
@@ -62,21 +62,21 @@ object TermuxBridge {
     if (!isTermuxInstalled(ctx)) {
       return "Error: Termux not installed. Install from F-Droid."
     }
-    
+
     return try {
       // Use am to start a command and capture output
       val resultFile = File(ctx.cacheDir, "termux_result_${System.currentTimeMillis()}.txt")
       val wrappedCmd = "$command > ${resultFile.absolutePath} 2>&1; echo EXIT_CODE=$\? >> ${resultFile.absolutePath}"
-      
+
       runInTermux(ctx, wrappedCmd)
-      
+
       // Wait for result
       var attempts = 0
       while (!resultFile.exists() && attempts < 50) {
         Thread.sleep(200)
         attempts++
       }
-      
+
       if (resultFile.exists()) {
         val content = resultFile.readText()
         resultFile.delete()
@@ -115,27 +115,23 @@ object TermuxBridge {
   }
 
   /** Setup SSH access to Termux */
-  fun setupSsh(ctx: Context): String {
-    return try {
-      runInTermux(ctx, "pkg install -y openssh")
-      Thread.sleep(5000)
-      runInTermux(ctx, "sshd")
-      "SSH server started in Termux on port 8022"
-    } catch (e: Exception) {
-      "Error setting up SSH: ${e.message}"
-    }
+  fun setupSsh(ctx: Context): String = try {
+    runInTermux(ctx, "pkg install -y openssh")
+    Thread.sleep(5000)
+    runInTermux(ctx, "sshd")
+    "SSH server started in Termux on port 8022"
+  } catch (e: Exception) {
+    "Error setting up SSH: ${e.message}"
   }
 
   /** Build system context for AI awareness */
-  fun buildSystemContext(ctx: Context): String {
-    return buildString {
-      appendLine("## Termux Integration")
-      appendLine("Installed: ${isTermuxInstalled(ctx)}")
-      appendLine("API installed: ${isTermuxApiInstalled(ctx)}")
-      if (isTermuxInstalled(ctx)) {
-        appendLine("Home: ${getTermuxHome()}")
-        appendLine("Bin: ${getTermuxBin()}")
-      }
+  fun buildSystemContext(ctx: Context): String = buildString {
+    appendLine("## Termux Integration")
+    appendLine("Installed: ${isTermuxInstalled(ctx)}")
+    appendLine("API installed: ${isTermuxApiInstalled(ctx)}")
+    if (isTermuxInstalled(ctx)) {
+      appendLine("Home: ${getTermuxHome()}")
+      appendLine("Bin: ${getTermuxBin()}")
     }
   }
 }
