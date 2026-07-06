@@ -542,29 +542,27 @@ private fun ChatInput(onSend: (String, List<String>) -> Unit, onStop: () -> Unit
       if (mime.startsWith("image/")) {
         pendingImages.add(it.toString())
       } else scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val result = if (mime == "application/pdf") {
+        // Copy to sandbox (files/home/)
+        val homeDir = java.io.File(context.filesDir, "home")
+        homeDir.mkdirs()
+        var name = "file_${System.currentTimeMillis()}"
+        context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
+          val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+          if (nameIdx != -1 && cursor.moveToFirst()) {
+            name = cursor.getString(nameIdx)
+          }
+        }
+        val dest = java.io.File(homeDir, name)
         try {
-          val bytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() } ?: byteArrayOf()
-          val name = it.lastPathSegment ?: "document.pdf"
-          com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
-          val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(bytes)
-          val pageCount = doc.numberOfPages
-          val extracted = com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc).take(100000)
-          doc.close()
-          (if (text.isNotBlank()) "\n" else "") + "[$name - $pageCount pages]\n${extracted.ifBlank { "[No extractable text]" }}"
+          context.contentResolver.openInputStream(it)?.use { input ->
+            dest.outputStream().use { output -> input.copyTo(output) }
+          }
+          val msg = (if (text.isNotBlank()) "\n" else "") + "[File imported: $name (to ~/)]"
+          kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + msg }
         } catch (e: Exception) {
-          "\n[PDF error: ${e.message}]"
+          val errorMsg = "\n[Import error: ${e.message}]"
+          kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + errorMsg }
         }
-      } else {
-        try {
-          val content = context.contentResolver.openInputStream(it)?.bufferedReader()?.readText()?.take(10000) ?: ""
-          val name = it.lastPathSegment ?: "file"
-          (if (text.isNotBlank()) "\n" else "") + "[$name]\n$content"
-        } catch (_: Exception) {
-          "\n[Attached: $it]"
-        }
-      }
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { text = text + result }
       }
     }
   }

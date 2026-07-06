@@ -121,6 +121,7 @@ class StreamingOrchestrator(
 
       var toolAcc = mutableMapOf<Int, MutableMap<String, String>>()
       var hasToolCalls = false
+      var reasoningAcc: StringBuilder? = null
       var inThinkTag = false
       var thinkTagName = "think"
       val pendingTagBuf = StringBuilder()
@@ -183,6 +184,26 @@ class StreamingOrchestrator(
                 // Reasoning
                 var reasoning = delta.optString("reasoning_content", "").let { if (it == "null") "" else it }.ifBlank {
                   delta.optString("reasoning", "").let { if (it == "null") "" else it }
+                }
+
+                // Thinking Loop Detection
+                if (reasoning.isNotEmpty()) {
+                  val rBuf = (reasoningAcc ?: StringBuilder().also { reasoningAcc = it })
+                  rBuf.append(reasoning)
+                  if (rBuf.length > 500) {
+                    val tail = rBuf.substring(rBuf.length - 500)
+                    // Check for repetition of a pattern at the end
+                    for (len in 10..200) {
+                      val pattern = tail.takeLast(len)
+                      val prev = tail.substring(0, tail.length - len).takeLast(len)
+                      val prev2 = if (tail.length >= 3 * len) tail.substring(0, tail.length - 2 * len).takeLast(len) else ""
+                      if (pattern == prev && pattern == prev2) {
+                        sseError = "Thinking loop detected — stopping."
+                        latch.countDown()
+                        return
+                      }
+                    }
+                  }
                 }
 
                 // Handle <think>/<thought>/<thinking> tags (may be split across chunks)
